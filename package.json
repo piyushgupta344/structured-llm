@@ -1,0 +1,89 @@
+{
+  "name": "structured-llm",
+  "version": "0.1.0",
+  "description": "Provider-agnostic TypeScript library for Zod-validated, fully-typed structured output from any LLM",
+  "keywords": [
+    "llm", "openai", "anthropic", "gemini", "mistral", "cohere", "groq",
+    "zod", "structured-output", "ai", "typescript", "validation", "schema",
+    "json", "extract", "classify", "batch", "streaming", "tool-calling"
+  ],
+  "license": "MIT",
+  "author": "Piyush Gupta <piyush@z.inc>",
+  "homepage": "https://structured-llm.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/piyushgupta344/structured-llm"
+  },
+  "bugs": {
+    "url": "https://github.com/piyushgupta344/structured-llm/issues"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./next": {
+      "import": "./dist/integrations/next/index.js",
+      "require": "./dist/integrations/next/index.cjs",
+      "types": "./dist/integrations/next/index.d.ts"
+    },
+    "./hono": {
+      "import": "./dist/integrations/hono/index.js",
+      "require": "./dist/integrations/hono/index.cjs",
+      "types": "./dist/integrations/hono/index.d.ts"
+    },
+    "./express": {
+      "import": "./dist/integrations/express/index.js",
+      "require": "./dist/integrations/express/index.cjs",
+      "types": "./dist/integrations/express/index.d.ts"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "docs:dev": "vitepress dev website",
+    "docs:build": "vitepress build website",
+    "docs:preview": "vitepress preview website",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && changeset publish"
+  },
+  "peerDependencies": {
+    "zod": ">=3.0.0"
+  },
+  "devDependencies": {
+    "@ai-sdk/openai": "^3.0.41",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@changesets/cli": "^2.30.0",
+    "@google/genai": "^1.44.0",
+    "@mistralai/mistralai": "^1.14.1",
+    "@types/node": "^25.4.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "biome": "^0.3.3",
+    "cohere-ai": "^7.20.0",
+    "openai": "^6.27.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitepress": "^1.6.4",
+    "vitest": "^4.0.18",
+    "zod": "^4.3.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
