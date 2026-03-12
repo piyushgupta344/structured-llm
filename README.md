@@ -5,7 +5,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/structured-llm"><img src="https://img.shields.io/npm/v/structured-llm?color=crimson&label=npm" alt="npm version" /></a>
-  <a href="https://github.com/piyushgupta344/structured-llm/actions"><img src="https://img.shields.io/github/actions/workflow/status/piyushgupta344/structured-llm/ci.yml?branch=main&label=tests" alt="CI" /></a>
+  <a href="https://github.com/piyushgupta344/structured-llm/actions"><img src="https://img.shields.io/github/actions/workflow/status/piyushgupta344/structured-llm/ci.yml?branch=master&label=tests" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/structured-llm"><img src="https://img.shields.io/npm/dm/structured-llm?label=downloads" alt="downloads" /></a>
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6" alt="TypeScript" />
   <img src="https://img.shields.io/badge/zero-runtime%20deps-4caf50" alt="zero deps" />
@@ -49,12 +49,14 @@ You have a few options today:
 |---|---|---|---|
 | Bring your own client | **yes** | no (their SDK) | partial |
 | Zero runtime dependencies | **yes** | no | no |
-| 13 providers | **yes** | yes | OpenAI only |
+| 14 providers | **yes** | yes | OpenAI only |
 | Streaming partial objects | **yes** | yes | no |
 | Fallback chain | **yes** | no | no |
 | Retry with error feedback | **yes** | basic | yes |
+| Standard Schema (Valibot, ArkType) | **yes** | no | no |
 | Custom schema (no Zod) | **yes** | no | no |
 | Works with local Ollama | **yes** | limited | no |
+| AWS Bedrock | **yes** | no | no |
 
 `structured-llm` has one job: take any LLM client you already have, take a Zod schema you already wrote, give back a typed object. No ecosystem lock-in.
 
@@ -67,6 +69,7 @@ You have a few options today:
   - [generate](#generate)
   - [generateArray](#generatearray)
   - [generateStream](#generatestream)
+  - [generateArrayStream](#generatearraystream)
   - [generateBatch](#generatebatch)
   - [generateMultiSchema](#generatemultischema)
   - [createClient](#createclient)
@@ -82,7 +85,8 @@ You have a few options today:
 - [Usage tracking](#usage-tracking)
 - [Hooks](#hooks)
 - [Error handling](#error-handling)
-- [Custom schemas](#custom-schemas-no-zod)
+- [Custom schemas](#custom-schemas)
+- [Standard Schema (Valibot, ArkType)](#standard-schema-valibot-arktype)
 - [Framework integrations](#framework-integrations)
 - [Examples](#examples)
 - [Contributing](#contributing)
@@ -102,11 +106,12 @@ yarn add structured-llm zod
 Install only the provider SDKs you actually use:
 
 ```bash
-npm install openai                    # OpenAI, Groq, xAI, Together, Fireworks, Ollama, Azure
-npm install @anthropic-ai/sdk         # Anthropic
-npm install @google/genai             # Gemini
-npm install @mistralai/mistralai      # Mistral
-npm install cohere-ai                 # Cohere
+npm install openai                       # OpenAI, Groq, xAI, Together, Fireworks, Ollama, Azure
+npm install @anthropic-ai/sdk            # Anthropic
+npm install @google/genai                # Gemini
+npm install @mistralai/mistralai         # Mistral
+npm install cohere-ai                    # Cohere
+npm install @aws-sdk/client-bedrock-runtime  # AWS Bedrock
 ```
 
 **Requires:** Node.js 18+, TypeScript 5+ (strict mode recommended)
@@ -168,7 +173,7 @@ generate({
   baseURL: "...",              // optional custom endpoint
 
   model: "gpt-4o-mini",        // required
-  schema: MyZodSchema,         // required — Zod or custom schema
+  schema: MyZodSchema,         // required — Zod, Standard Schema, or custom schema
 
   // Input — use prompt, messages, or both
   prompt: "...",
@@ -184,13 +189,18 @@ generate({
   // Retry
   maxRetries: 3,
   retryOptions: {
-    strategy: "exponential",   // "immediate" | "linear" | "exponential"
+    strategy: "exponential",   // "immediate" (default) | "linear" | "exponential"
     baseDelayMs: 500,
   },
 
   // Generation params
   temperature: 0,
   maxTokens: 1000,
+  topP: 1,                     // nucleus sampling
+  seed: 42,                    // reproducible outputs (where supported)
+
+  // Cancellation
+  signal: abortController.signal,
 
   // Observability
   trackUsage: false,
@@ -259,6 +269,7 @@ const stream = generateStream({
   model: "gpt-4o",
   schema: ReportSchema,
   prompt: "Write a comprehensive market analysis for the EV industry in 2025.",
+  signal: request.signal,   // cancel when the HTTP request is aborted
 });
 
 // Iterate over partial updates
@@ -274,6 +285,43 @@ for await (const event of stream) {
 
 // Or just await the final validated result
 const { data } = await stream.result;
+```
+
+Automatically retries on rate limits (429, 502, 503, 529) with exponential backoff, rolling back any partial events before retrying.
+
+---
+
+### `generateArrayStream`
+
+Stream array items as they complete. Each event contains the cumulative list of fully-parsed items so far.
+
+```typescript
+import { generateArrayStream } from "structured-llm";
+import { z } from "zod";
+
+const stream = generateArrayStream({
+  client: openai,
+  model: "gpt-4o",
+  schema: z.object({ name: z.string(), price: z.number(), category: z.string() }),
+  prompt: "List 20 top-selling electronics products for 2025",
+});
+
+for await (const { items, isDone } of stream) {
+  console.log(`${items.length} items loaded...`);
+  if (isDone) renderFinalList(items);
+}
+
+// Or await the complete result directly
+const { data } = await stream.result;
+```
+
+Each event:
+```typescript
+interface ArrayStreamEvent<T> {
+  items: T[];          // cumulative array of complete, validated items
+  isDone: boolean;
+  usage?: UsageInfo;   // only on the final event when trackUsage: true
+}
 ```
 
 ---
@@ -298,7 +346,7 @@ const { items, succeeded, failed, totalUsage } = await generateBatch({
 });
 
 console.log(`${succeeded.length}/${items.length} succeeded`);
-console.log(`Total cost: $${totalUsage?.estimatedCostUsd.toFixed(4)}`);
+console.log(`Total cost: $${totalUsage?.estimatedCostUsd?.toFixed(4)}`);
 
 // Results are in original input order
 items.forEach(({ index, data, error, durationMs }) => {
@@ -377,7 +425,7 @@ const stream = llm.generateStream({
   prompt: "Write a report on...",
 });
 
-// All new helpers are also available on the client
+// All helpers are also available on the client
 const result = await llm.classify({ ... });
 const data = await llm.extract({ ... });
 const { results } = await llm.generateMultiSchema({ ... });
@@ -507,7 +555,7 @@ Variables use `{{double_braces}}` syntax. An error is thrown if a variable is mi
 
 ### `withCache`
 
-Wrap `generate()` with TTL-based memoization. Identical prompts + model combinations skip the API and return the cached result.
+Wrap `generate()` with TTL-based memoization. Identical prompts + model + schema combinations skip the API and return the cached result.
 
 ```typescript
 import { withCache } from "structured-llm";
@@ -515,7 +563,7 @@ import { withCache } from "structured-llm";
 const cachedGenerate = withCache({
   ttl: 5 * 60 * 1000,  // 5 minute TTL (default)
   debug: true,          // log cache hits/misses
-  // store: customStore  // optional custom cache backend
+  // store: customStore  // optional custom cache backend (e.g. Redis)
   // keyFn: (opts) => myKey  // optional custom cache key function
 });
 
@@ -532,6 +580,8 @@ const cachedA = withCache({ store, ttl: 60_000 });
 const cachedB = withCache({ store, ttl: 60_000 });
 ```
 
+The cache key includes model, prompt/messages, and schema JSON — different schemas for the same prompt are cached separately.
+
 ---
 
 ## Providers
@@ -547,52 +597,30 @@ The library auto-detects the provider from your client instance. Just pass it in
 | Gemini | `npm i @google/genai` | `new GoogleGenAI({ apiKey })` |
 | Mistral | `npm i @mistralai/mistralai` | `new Mistral({ apiKey })` |
 | Cohere | `npm i cohere-ai` | `new CohereClient({ token })` |
+| AWS Bedrock | `npm i @aws-sdk/client-bedrock-runtime` | `new BedrockRuntimeClient({ region })` |
 
 ### OpenAI-compatible providers
 
-These all use the OpenAI SDK pointed at a different endpoint. The library detects them by `baseURL`:
+These all use the OpenAI SDK pointed at a different endpoint:
 
 ```typescript
 import OpenAI from "openai";
 
 // Groq — fastest inference, great for real-time apps
-const groq = new OpenAI({
-  apiKey: process.env.GROQ_API_KEY,
-  baseURL: "https://api.groq.com/openai/v1",
-});
+const groq = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: "https://api.groq.com/openai/v1" });
 generate({ client: groq, model: "llama-3.3-70b-versatile", ... })
 
 // xAI (Grok)
-const xai = new OpenAI({
-  apiKey: process.env.XAI_API_KEY,
-  baseURL: "https://api.x.ai/v1",
-});
-generate({ client: xai, model: "grok-2", ... })
+const xai = new OpenAI({ apiKey: process.env.XAI_API_KEY, baseURL: "https://api.x.ai/v1" });
 
 // Together AI — large selection of open models
-const together = new OpenAI({
-  apiKey: process.env.TOGETHER_API_KEY,
-  baseURL: "https://api.together.xyz/v1",
-});
+const together = new OpenAI({ apiKey: process.env.TOGETHER_API_KEY, baseURL: "https://api.together.xyz/v1" });
 generate({ client: together, model: "meta-llama/Llama-3.3-70B-Instruct-Turbo", ... })
 
-// Fireworks AI — fast open model inference
-const fireworks = new OpenAI({
-  apiKey: process.env.FIREWORKS_API_KEY,
-  baseURL: "https://api.fireworks.ai/inference/v1",
-});
-
-// Perplexity
-const perplexity = new OpenAI({
-  apiKey: process.env.PERPLEXITY_API_KEY,
-  baseURL: "https://api.perplexity.ai",
-});
+// Fireworks AI, Perplexity — same pattern
 
 // Ollama — local models, completely free
-const ollama = new OpenAI({
-  apiKey: "ollama",
-  baseURL: "http://localhost:11434/v1",
-});
+const ollama = new OpenAI({ apiKey: "ollama", baseURL: "http://localhost:11434/v1" });
 generate({ client: ollama, model: "llama3.2", mode: "json-mode" })
 
 // Azure OpenAI
@@ -600,6 +628,33 @@ const azure = new OpenAI({
   apiKey: process.env.AZURE_OPENAI_API_KEY,
   baseURL: "https://your-resource.openai.azure.com/openai/deployments/gpt-4o",
 });
+```
+
+### AWS Bedrock
+
+```typescript
+import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
+import { generate } from "structured-llm";
+
+const bedrock = new BedrockRuntimeClient({ region: "us-east-1" });
+
+const { data } = await generate({
+  client: bedrock,
+  model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+  schema: MySchema,
+  prompt: "...",
+});
+```
+
+Or use the `provider` string to auto-initialize from environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`):
+
+```typescript
+generate({
+  provider: "bedrock",
+  model: "amazon.nova-pro-v1:0",
+  schema: MySchema,
+  prompt: "...",
+})
 ```
 
 ### Auto-initialize from environment
@@ -618,6 +673,7 @@ generate({
   provider: "fireworks",  // FIREWORKS_API_KEY
   provider: "perplexity", // PERPLEXITY_API_KEY
   provider: "cohere",     // COHERE_API_KEY
+  provider: "bedrock",    // AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY + AWS_REGION
   provider: "ollama",     // no key needed
   model: "...",
   schema: ...,
@@ -651,10 +707,7 @@ Does the model support tool calling?
 Override when needed:
 
 ```typescript
-// Force JSON mode even if the model supports tool calling
 generate({ ..., mode: "json-mode" })
-
-// Prompt injection — works even on models with no structured output support
 generate({ ..., mode: "prompt-inject" })
 ```
 
@@ -675,6 +728,8 @@ Attempt 2:  "Your previous response had errors:
             → LLM returns { "score": 0.8, "sentiment": "positive" }  ✓
 ```
 
+Rate-limit errors (429, 502, 503, 529) are also retried automatically with exponential backoff — no configuration needed.
+
 ```typescript
 generate({
   ...,
@@ -690,7 +745,7 @@ generate({
 
 ## Fallback chain
 
-Define a list of provider+model pairs to try in order. Falls back automatically if the primary provider fails (network error, rate limit, etc.). Does **not** fall back on validation errors — those are retried against the same provider.
+Define a list of provider+model pairs to try in order. Falls back automatically if the primary provider fails (network error, rate limit, outage, etc.).
 
 ```typescript
 import OpenAI from "openai";
@@ -702,11 +757,11 @@ generate({
   model: "gpt-4o",
 
   fallbackChain: [
-    // first fallback — different model, same provider
+    // first fallback — cheaper model, same provider
     { client: new OpenAI(), model: "gpt-4o-mini" },
 
     // second fallback — different provider
-    { client: new Anthropic(), model: "claude-haiku-4-5" },
+    { client: new Anthropic(), model: "claude-haiku-4-5-20251001" },
 
     // last resort — free local model
     { provider: "ollama", model: "llama3.2" },
@@ -745,7 +800,7 @@ console.log(usage);
 // }
 ```
 
-The cost estimate uses a built-in pricing table that's updated with each release. It covers all 35+ supported models. For unknown models, `estimatedCostUsd` is `0`.
+The cost estimate uses a built-in pricing table updated with each release. For unknown models, `estimatedCostUsd` is `undefined`.
 
 Use the `onSuccess` hook to pipe usage data to your analytics or database:
 
@@ -788,6 +843,11 @@ generate({
       // useful for debugging what the LLM actually returned
     },
 
+    // Fires on each partial update during generateStream() / generateArrayStream()
+    onChunk: ({ partial, model }) => {
+      broadcastToWebSocket(partial);
+    },
+
     // Fires when a retry is about to happen
     onRetry: ({ attempt, maxRetries, error, model }) => {
       logger.warn(`Retrying (${attempt}/${maxRetries}): ${error}`);
@@ -807,7 +867,7 @@ generate({
 })
 ```
 
-When using `createClient`, global hooks (set on the client) and per-call hooks are both called — you don't have to choose.
+When using `createClient`, global hooks (set on the client) and per-call hooks both fire — you don't have to choose.
 
 ```typescript
 const llm = createClient({
@@ -870,38 +930,9 @@ try {
 
 ---
 
-## Custom schemas (no Zod)
+## Custom schemas
 
-You don't have to use Zod. Any object with a `jsonSchema` and `parse` function works.
-
-```typescript
-// With TypeBox
-import { Type, type Static } from "@sinclair/typebox";
-import { TypeCompiler } from "@sinclair/typebox/compiler";
-
-const UserSchema = Type.Object({
-  name: Type.String(),
-  age: Type.Number({ minimum: 0 }),
-  role: Type.Union([Type.Literal("admin"), Type.Literal("user")]),
-});
-type User = Static<typeof UserSchema>;
-
-const compiled = TypeCompiler.Compile(UserSchema);
-
-const { data } = await generate({
-  client: openai,
-  model: "gpt-4o-mini",
-  schema: {
-    jsonSchema: UserSchema,
-    parse: (input: unknown): User => {
-      const errors = [...compiled.Errors(input)];
-      if (errors.length) throw new Error(errors.map((e) => e.message).join(", "));
-      return input as User;
-    },
-  },
-  prompt: "...",
-});
-```
+You don't have to use Zod. Any object with a `jsonSchema` and `parse` function works:
 
 ```typescript
 // Hand-rolled validator
@@ -926,6 +957,80 @@ const { data } = await generate({
 });
 ```
 
+```typescript
+// With TypeBox
+import { Type, type Static } from "@sinclair/typebox";
+import { TypeCompiler } from "@sinclair/typebox/compiler";
+
+const UserSchema = Type.Object({
+  name: Type.String(),
+  age: Type.Number({ minimum: 0 }),
+  role: Type.Union([Type.Literal("admin"), Type.Literal("user")]),
+});
+type User = Static<typeof UserSchema>;
+const compiled = TypeCompiler.Compile(UserSchema);
+
+const { data } = await generate({
+  client: openai,
+  model: "gpt-4o-mini",
+  schema: {
+    jsonSchema: UserSchema,
+    parse: (input: unknown): User => {
+      const errors = [...compiled.Errors(input)];
+      if (errors.length) throw new Error(errors.map((e) => e.message).join(", "));
+      return input as User;
+    },
+  },
+  prompt: "...",
+});
+```
+
+---
+
+## Standard Schema (Valibot, ArkType)
+
+Libraries that implement the [Standard Schema v1](https://standardschema.dev) spec are auto-detected and work without any adapters. This includes Valibot, ArkType, Effect Schema, and Zod v4.
+
+```typescript
+import * as v from "valibot";
+import { generate } from "structured-llm";
+
+const PersonSchema = v.object({
+  name: v.string(),
+  age: v.number(),
+  email: v.pipe(v.string(), v.email()),
+});
+
+// Just pass it — no adapter needed
+const { data } = await generate({
+  client: openai,
+  model: "gpt-4o-mini",
+  schema: PersonSchema,
+  prompt: "Extract: Alice Smith, 28, alice@example.com",
+});
+// data.name, data.age, data.email are fully typed
+```
+
+```typescript
+import { type } from "arktype";
+
+const UserType = type({ name: "string", score: "number" });
+
+const { data } = await generate({
+  client: openai,
+  model: "gpt-4o-mini",
+  schema: UserType,
+  prompt: "...",
+});
+```
+
+If you need to convert explicitly, use `fromStandardSchema`:
+
+```typescript
+import { fromStandardSchema } from "structured-llm";
+const schema = fromStandardSchema(valibotSchema);
+```
+
 ---
 
 ## Framework integrations
@@ -933,11 +1038,11 @@ const { data } = await generate({
 ### Next.js App Router
 
 ```typescript
-// app/api/analyze/route.ts
-import { structuredRoute } from "structured-llm/next";
+// app/api/analyze/route.ts — simple JSON endpoint
+import { createStructuredRoute } from "structured-llm/next";
 import { z } from "zod";
 
-export const POST = structuredRoute({
+export const POST = createStructuredRoute({
   provider: "openai",
   model: "gpt-4o-mini",
   schema: z.object({
@@ -946,9 +1051,20 @@ export const POST = structuredRoute({
     summary: z.string(),
   }),
 });
-
 // Request:  POST /api/analyze  { "prompt": "App crashes on login" }
 // Response: { "data": { "category": "bug", "priority": "high", "summary": "..." } }
+```
+
+```typescript
+// app/api/stream/route.ts — NDJSON streaming endpoint
+import { createStreamingRoute } from "structured-llm/next";
+
+export const POST = createStreamingRoute({
+  provider: "openai",
+  model: "gpt-4o",
+  schema: ReportSchema,
+});
+// Streams: {"partial":{...},"isDone":false}\n{"partial":{...},"isDone":true,...}\n
 ```
 
 ```typescript
@@ -961,7 +1077,6 @@ export const classifyTicket = withStructured({
   schema: TicketSchema,
 });
 
-// In your component or another server action:
 const result = await classifyTicket({ prompt: ticket.description });
 ```
 
@@ -969,51 +1084,55 @@ const result = await classifyTicket({ prompt: ticket.description });
 
 ```typescript
 import { Hono } from "hono";
-import { structuredLLM } from "structured-llm/hono";
-import { z } from "zod";
+import { structuredLLM, createStructuredHandler, createStreamingHandler } from "structured-llm/hono";
 
 const app = new Hono();
 
+// Middleware — attaches result to context, calls next()
 app.post(
   "/extract",
   structuredLLM({
     provider: "openai",
     model: "gpt-4o-mini",
-    schema: z.object({ name: z.string(), email: z.string().email() }),
+    schema: ContactSchema,
     promptFromBody: (body) => `Extract contact info from: ${body.text}`,
   }),
-  (c) => {
-    const result = c.get("structuredResult");
-    return c.json({ data: result });
-  }
+  (c) => c.json(c.get("structuredResult"))
 );
+
+// Route handler — responds directly
+app.post("/analyze", createStructuredHandler({ provider: "openai", model: "gpt-4o-mini", schema: AnalysisSchema }));
+
+// Streaming route handler
+app.post("/stream", createStreamingHandler({ provider: "openai", model: "gpt-4o", schema: ReportSchema }));
 ```
 
 ### Express
 
 ```typescript
 import express from "express";
-import { structuredMiddleware } from "structured-llm/express";
-import { z } from "zod";
+import { structuredMiddleware, createStructuredHandler, createStreamingHandler } from "structured-llm/express";
 
 const app = express();
 app.use(express.json());
 
+// Middleware — attaches to req.structured, calls next()
 app.post(
   "/classify",
   structuredMiddleware({
     provider: "openai",
     model: "gpt-4o-mini",
-    schema: z.object({
-      intent: z.enum(["purchase", "refund", "inquiry", "complaint"]),
-      confidence: z.number(),
-    }),
+    schema: IntentSchema,
     promptFromBody: (body) => body.message,
   }),
-  (req, res) => {
-    res.json(req.structured); // { intent: "refund", confidence: 0.94 }
-  }
+  (req, res) => res.json(req.structured)
 );
+
+// Route handler — responds directly
+app.post("/analyze", createStructuredHandler({ provider: "openai", model: "gpt-4o-mini", schema: AnalysisSchema }));
+
+// Streaming route handler (NDJSON)
+app.post("/stream", createStreamingHandler({ provider: "openai", model: "gpt-4o", schema: ReportSchema }));
 ```
 
 ---
@@ -1036,29 +1155,30 @@ const caps = getModelCapabilities("gpt-4o-mini");
 // }
 
 // list all supported models for a provider
-listSupportedModels({ provider: "groq" });
-// ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", ...]
+listSupportedModels({ provider: "anthropic" });
+// ["claude-opus-4-6", "claude-sonnet-4-6", "claude-3-7-sonnet-20250219", "claude-haiku-4-5-20251001", ...]
 
 // list everything
 listSupportedModels();
-// all 35+ registered models
+// all 40+ registered models
 ```
+
+**Newly added models in v0.2.0:** `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `o3`, `o4-mini`, `claude-3-7-sonnet-20250219`, `claude-haiku-4-5-20251001`, `gemini-2.5-pro`, `gemini-2.5-flash`, `llama-4-scout-17b-16e-instruct`, `llama-4-maverick-17b-128e-instruct`
 
 ---
 
 ## Examples
 
-The [`examples/`](examples/) directory has 40 full runnable examples covering a wide range of use cases:
+The [`examples/`](examples/) directory has 40 full runnable examples:
 
 ```bash
-# clone the repo
 git clone https://github.com/piyushgupta344/structured-llm
 cd structured-llm && pnpm install
 
 OPENAI_API_KEY=sk-... npx tsx examples/01-sentiment-analysis.ts
 ```
 
-**Core library features:**
+**Core features:**
 
 | Example | What it demonstrates |
 |---|---|
@@ -1081,10 +1201,8 @@ OPENAI_API_KEY=sk-... npx tsx examples/01-sentiment-analysis.ts
 | [`12-invoice-extraction.ts`](examples/12-invoice-extraction.ts) | `extract()` helper — parse billing data from invoice text |
 | [`15-legal-contract-analysis.ts`](examples/15-legal-contract-analysis.ts) | `generateMultiSchema()` — key terms + risk assessment from one document |
 | [`18-medical-notes-extraction.ts`](examples/18-medical-notes-extraction.ts) | Extract vitals, symptoms, medications from clinical notes |
-| [`21-news-fact-extraction.ts`](examples/21-news-fact-extraction.ts) | Entities, key claims, and tone analysis from news articles |
-| [`24-email-thread-analysis.ts`](examples/24-email-thread-analysis.ts) | Action items, decisions, and sentiment from email threads |
-| [`28-academic-paper-analysis.ts`](examples/28-academic-paper-analysis.ts) | `generateMultiSchema()` — metadata + contributions from research papers |
-| [`31-podcast-show-notes.ts`](examples/31-podcast-show-notes.ts) | Chapters, quotes, and resources from podcast transcripts |
+| [`28-academic-paper-analysis.ts`](examples/28-academic-paper-analysis.ts) | Metadata + contributions from research papers |
+| [`39-multi-schema-document.ts`](examples/39-multi-schema-document.ts) | `generateMultiSchema()` — summary + quotes + actions from one document |
 
 **Classification & routing:**
 
@@ -1095,38 +1213,15 @@ OPENAI_API_KEY=sk-... npx tsx examples/01-sentiment-analysis.ts
 | [`34-multilingual-feedback.ts`](examples/34-multilingual-feedback.ts) | `generateBatch()` — detect language, translate, and classify in bulk |
 | [`38-bug-triage.ts`](examples/38-bug-triage.ts) | `generateBatch()` — severity, priority, and owner assignment |
 
-**Code & developer tooling:**
+**Data pipelines:**
 
 | Example | What it demonstrates |
 |---|---|
-| [`16-code-security-audit.ts`](examples/16-code-security-audit.ts) | Detect OWASP vulnerabilities and generate secure rewrites |
-| [`20-git-commit-generator.ts`](examples/20-git-commit-generator.ts) | `createTemplate()` — conventional commits from git diffs |
-| [`23-natural-language-to-sql.ts`](examples/23-natural-language-to-sql.ts) | `createTemplate()` — parameterized SQL from plain English |
-| [`25-api-spec-extraction.ts`](examples/25-api-spec-extraction.ts) | Generate OpenAPI-style specs from natural language descriptions |
-| [`36-test-generation.ts`](examples/36-test-generation.ts) | Unit test generation from function signatures |
-
-**Business intelligence:**
-
-| Example | What it demonstrates |
-|---|---|
-| [`19-job-posting-skills.ts`](examples/19-job-posting-skills.ts) | Tech stack and requirements from job descriptions |
-| [`26-sales-call-crm.ts`](examples/26-sales-call-crm.ts) | CRM-ready data from sales call transcripts |
-| [`33-competitor-analysis.ts`](examples/33-competitor-analysis.ts) | `generateBatch()` — competitive intelligence at scale |
-| [`40-market-research-template.ts`](examples/40-market-research-template.ts) | `createTemplate()` — run the same research framework across multiple markets |
-
-**Data pipelines & real-world use cases:**
-
-| Example | What it demonstrates |
-|---|---|
-| [`17-product-catalog-normalization.ts`](examples/17-product-catalog-normalization.ts) | `generateBatch()` — normalize messy product data from multiple suppliers |
-| [`22-recipe-extraction.ts`](examples/22-recipe-extraction.ts) | Parse blog-style recipe posts into structured cooking data |
-| [`27-log-anomaly-detection.ts`](examples/27-log-anomaly-detection.ts) | Analyze server logs for incidents and root causes |
+| [`17-product-catalog-normalization.ts`](examples/17-product-catalog-normalization.ts) | `generateBatch()` — normalize messy product data |
 | [`29-real-estate-listing.ts`](examples/29-real-estate-listing.ts) | `generateArray()` — parse multiple property listings at once |
-| [`30-symptom-triage.ts`](examples/30-symptom-triage.ts) | Urgency classification from symptom descriptions |
-| [`32-review-aggregation.ts`](examples/32-review-aggregation.ts) | Parse then aggregate product reviews into insights |
-| [`35-event-calendar-extraction.ts`](examples/35-event-calendar-extraction.ts) | `generateArray()` — parse event announcements into calendar objects |
+| [`33-competitor-analysis.ts`](examples/33-competitor-analysis.ts) | `generateBatch()` — competitive intelligence at scale |
 | [`37-caching-repeated-queries.ts`](examples/37-caching-repeated-queries.ts) | `withCache()` — avoid redundant API calls for identical inputs |
-| [`39-multi-schema-document.ts`](examples/39-multi-schema-document.ts) | `generateMultiSchema()` — summary + quotes + actions from one document |
+| [`40-market-research-template.ts`](examples/40-market-research-template.ts) | `createTemplate()` — run the same research framework across markets |
 
 ---
 
