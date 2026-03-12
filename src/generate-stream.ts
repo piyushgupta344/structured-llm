@@ -81,7 +81,7 @@ export function generateStream<TSchema extends ZodLike>(
         // Snapshot event count so we can roll back on retry
         const eventsAtStart = events.length;
 
-        await emitRequest(hooks, builtMessages, model, providerAdapter.name, attempt + 1);
+        await emitRequest(hooks as Hooks<unknown>, builtMessages, model, providerAdapter.name, attempt + 1);
 
         let accumulated = "";
 
@@ -130,21 +130,21 @@ export function generateStream<TSchema extends ZodLike>(
           events.splice(eventsAtStart);
 
           if (err instanceof ProviderError && isRetryableStatus(err.statusCode) && attempt < maxRetries) {
-            await emitRetry(hooks, attempt + 1, maxRetries, err.message, model);
+            await emitRetry(hooks as Hooks<unknown>, attempt + 1, maxRetries, err.message, model);
             const delay = retryDelay(attempt + 1, retryOptions ?? { strategy: "exponential", baseDelayMs: 1000 });
             if (delay > 0) await sleep(delay);
             continue;
           }
 
           const e = err instanceof Error ? err : new Error(String(err));
-          await emitError(hooks, e, attempt + 1);
+          await emitError(hooks as Hooks<unknown>, e, attempt + 1);
           done = true;
           notify();
           rejectResult(e);
           return;
         }
 
-        await emitResponse(hooks, accumulated, attempt + 1, model);
+        await emitResponse(hooks as Hooks<unknown>, accumulated, attempt + 1, model);
 
         // Final parse + validate
         let parsed: unknown;
@@ -153,7 +153,7 @@ export function generateStream<TSchema extends ZodLike>(
           parsed = JSON.parse(cleaned);
         } catch {
           const err = new ParseError(accumulated, attempt + 1);
-          await emitError(hooks, err, attempt + 1);
+          await emitError(hooks as Hooks<unknown>, err, attempt + 1);
           done = true;
           notify();
           rejectResult(err);
@@ -163,7 +163,7 @@ export function generateStream<TSchema extends ZodLike>(
         const validation = schemaAdapter.safeParse(parsed);
         if (!validation.success) {
           const err = new ValidationError([validation.error], accumulated, attempt + 1);
-          await emitError(hooks, err, attempt + 1);
+          await emitError(hooks as Hooks<unknown>, err, attempt + 1);
           done = true;
           notify();
           rejectResult(err);
@@ -181,7 +181,7 @@ export function generateStream<TSchema extends ZodLike>(
             )
           : undefined;
 
-        await emitSuccess(hooks, validation.data, usage);
+        await emitSuccess(hooks as Hooks<unknown>, validation.data, usage);
         events.push({ partial: validation.data, isDone: true, usage });
         notify();
         done = true;
