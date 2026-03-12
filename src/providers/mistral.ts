@@ -12,7 +12,7 @@ export class MistralAdapter implements ProviderAdapter {
   }
 
   async complete(req: AdapterRequest): Promise<AdapterResponse> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens } = req;
+    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed } = req;
 
     const mistralMessages = messages.map((m) => ({
       role: m.role,
@@ -26,6 +26,8 @@ export class MistralAdapter implements ProviderAdapter {
           messages: mistralMessages,
           temperature: temperature ?? 0,
           maxTokens,
+          topP,
+          randomSeed: seed,
           tools: [
             {
               type: "function",
@@ -58,6 +60,8 @@ export class MistralAdapter implements ProviderAdapter {
           messages: mistralMessages,
           temperature: temperature ?? 0,
           maxTokens,
+          topP,
+          randomSeed: seed,
           responseFormat: { type: "json_object" },
         });
 
@@ -73,6 +77,8 @@ export class MistralAdapter implements ProviderAdapter {
         messages: mistralMessages,
         temperature: temperature ?? 0,
         maxTokens,
+        topP,
+        randomSeed: seed,
       });
 
       return {
@@ -89,7 +95,7 @@ export class MistralAdapter implements ProviderAdapter {
   }
 
   async *stream(req: AdapterRequest): AsyncIterable<string> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens } = req;
+    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed } = req;
     const mistralMessages = messages.map((m) => ({ role: m.role, content: m.content }));
 
     try {
@@ -99,6 +105,8 @@ export class MistralAdapter implements ProviderAdapter {
           messages: mistralMessages,
           temperature: temperature ?? 0,
           maxTokens,
+          topP,
+          randomSeed: seed,
           tools: [
             {
               type: "function",
@@ -124,6 +132,8 @@ export class MistralAdapter implements ProviderAdapter {
         messages: mistralMessages,
         temperature: temperature ?? 0,
         maxTokens,
+        topP,
+        randomSeed: seed,
         ...(mode === "json-mode" ? { responseFormat: { type: "json_object" } } : {}),
       });
 

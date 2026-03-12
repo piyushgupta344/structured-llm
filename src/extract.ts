@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GenerateOptions, ZodLike } from "./types.js";
+import type { GenerateOptions, UsageInfo, ZodLike } from "./types.js";
 import { generate } from "./generate.js";
 
 // Simple field types that map to Zod schemas
@@ -50,7 +50,7 @@ export interface ExtractOptions<F extends ExtractFields>
 
 export async function extract<F extends ExtractFields>(
   opts: ExtractOptions<F>
-): Promise<ExtractResult<F>> {
+): Promise<ExtractResult<F> & { usage?: UsageInfo }> {
   const { fields, requireAll = false, ...rest } = opts;
 
   // Build a Zod schema dynamically from the field definitions
@@ -114,5 +114,5 @@ export async function extract<F extends ExtractFields>(
       : `Extract the following fields from the provided text:\n${fieldDescriptions}\nIf a field cannot be found, omit it.`,
   });
 
-  return result.data as ExtractResult<F>;
+  return { ...(result.data as ExtractResult<F>), usage: result.usage };
 }

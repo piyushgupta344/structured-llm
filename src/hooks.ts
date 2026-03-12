@@ -54,3 +54,12 @@ export async function emitError(
 ) {
   await runHook(hooks, "onError", { error, allAttempts });
 }
+
+export async function emitChunk<T>(
+  hooks: Hooks<T> | undefined,
+  partial: Partial<T>,
+  model: string
+) {
+  if (!hooks?.onChunk) return;
+  await (hooks.onChunk as (ctx: { partial: Partial<T>; model: string }) => void | Promise<void>)({ partial, model });
+}

@@ -12,7 +12,7 @@ export class AnthropicAdapter implements ProviderAdapter {
   }
 
   async complete(req: AdapterRequest): Promise<AdapterResponse> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens } = req;
+    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, signal } = req;
 
     // Anthropic separates system messages from user/assistant turns
     const systemMsg = messages.find((m) => m.role === "system")?.content;
@@ -26,6 +26,7 @@ export class AnthropicAdapter implements ProviderAdapter {
           model,
           max_tokens: maxTokens ?? 4096,
           temperature: temperature ?? 0,
+          top_p: topP,
           system: systemMsg,
           messages: turns,
           tools: [
@@ -36,7 +37,7 @@ export class AnthropicAdapter implements ProviderAdapter {
             },
           ],
           tool_choice: { type: "tool", name: schemaName },
-        });
+        }, { signal });
 
         const toolUse = resp.content.find(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,9 +67,10 @@ export class AnthropicAdapter implements ProviderAdapter {
         model,
         max_tokens: maxTokens ?? 4096,
         temperature: temperature ?? 0,
+        top_p: topP,
         system: systemWithSchema,
         messages: turns,
-      });
+      }, { signal });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const textBlock = resp.content.find((b: any) => b.type === "text");
@@ -87,7 +89,7 @@ export class AnthropicAdapter implements ProviderAdapter {
   }
 
   async *stream(req: AdapterRequest): AsyncIterable<string> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens } = req;
+    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, signal } = req;
     const systemMsg = messages.find((m) => m.role === "system")?.content;
     const turns = messages
       .filter((m) => m.role !== "system")
@@ -99,6 +101,7 @@ export class AnthropicAdapter implements ProviderAdapter {
           model,
           max_tokens: maxTokens ?? 4096,
           temperature: temperature ?? 0,
+          top_p: topP,
           system: systemMsg,
           messages: turns,
           tools: [
@@ -109,7 +112,7 @@ export class AnthropicAdapter implements ProviderAdapter {
             },
           ],
           tool_choice: { type: "tool", name: schemaName },
-        });
+        }, { signal });
 
         for await (const event of stream) {
           if (
@@ -133,9 +136,10 @@ export class AnthropicAdapter implements ProviderAdapter {
         model,
         max_tokens: maxTokens ?? 4096,
         temperature: temperature ?? 0,
+        top_p: topP,
         system: systemWithSchema,
         messages: turns,
-      });
+      }, { signal });
 
       for await (const event of stream) {
         if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {

@@ -2,6 +2,7 @@
 export { generate } from "./generate.js";
 export { generateArray } from "./generate-array.js";
 export { generateStream } from "./generate-stream.js";
+export { generateArrayStream } from "./generate-array-stream.js";
 export { generateBatch } from "./generate-batch.js";
 export { generateMultiSchema } from "./generate-multi-schema.js";
 export { createClient } from "./client.js";
@@ -99,6 +100,10 @@ export { getModelCapabilities, listSupportedModels, resolveMode } from "./models
 // Schema utilities
 export { resolveSchema } from "./schema/detect.js";
 export type { CustomSchema } from "./schema/detect.js";
+export { fromStandardSchema } from "./schema/adapters/standard-schema.js";
+
+// generateArrayStream types
+export type { ArrayStreamEvent } from "./generate-array-stream.js";
 
 // createClient type
 export type { StructuredLLMClient } from "./client.js";

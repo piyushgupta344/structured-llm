@@ -12,7 +12,9 @@ export class GeminiAdapter implements ProviderAdapter {
   }
 
   async complete(req: AdapterRequest): Promise<AdapterResponse> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens } = req;
+    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed, signal } = req;
+
+    if (signal?.aborted) throw new ProviderError("gemini", "Request aborted");
 
     // Build content array for Gemini format
     const systemMsg = messages.find((m) => m.role === "system")?.content;
@@ -24,6 +26,8 @@ export class GeminiAdapter implements ProviderAdapter {
     const generationConfig = {
       temperature: temperature ?? 0,
       maxOutputTokens: maxTokens,
+      topP,
+      seed,
     };
 
     try {
@@ -114,7 +118,10 @@ export class GeminiAdapter implements ProviderAdapter {
   }
 
   async *stream(req: AdapterRequest): AsyncIterable<string> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens } = req;
+    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed, signal } = req;
+
+    if (signal?.aborted) throw new ProviderError("gemini", "Request aborted");
+
     const systemMsg = messages.find((m) => m.role === "system")?.content;
     const turns = messages.filter((m) => m.role !== "system").map((m) => ({
       role: m.role === "assistant" ? "model" : "user",
@@ -127,6 +134,8 @@ export class GeminiAdapter implements ProviderAdapter {
           ? {
               temperature: temperature ?? 0,
               maxOutputTokens: maxTokens,
+              topP,
+              seed,
               systemInstruction: systemMsg,
               responseMimeType: "application/json",
               responseSchema: cleanSchemaForGemini(schema),
@@ -135,6 +144,8 @@ export class GeminiAdapter implements ProviderAdapter {
           ? {
               temperature: temperature ?? 0,
               maxOutputTokens: maxTokens,
+              topP,
+              seed,
               systemInstruction: systemMsg,
               tools: [{ functionDeclarations: [{ name: schemaName, parameters: cleanSchemaForGemini(schema) }] }],
               toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [schemaName] } },
@@ -142,6 +153,8 @@ export class GeminiAdapter implements ProviderAdapter {
           : {
               temperature: temperature ?? 0,
               maxOutputTokens: maxTokens,
+              topP,
+              seed,
               systemInstruction: systemMsg,
             };
 

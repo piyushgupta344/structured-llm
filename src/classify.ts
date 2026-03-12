@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GenerateOptions, ZodLike } from "./types.js";
+import type { GenerateOptions, UsageInfo, ZodLike } from "./types.js";
 import { generate } from "./generate.js";
 
 export type ClassifyOption =
@@ -23,6 +23,7 @@ export interface ClassifyResult {
   labels: string[];
   confidence?: number;
   reasoning?: string;
+  usage?: UsageInfo;
 }
 
 export async function classify(opts: ClassifyOptions): Promise<ClassifyResult> {
@@ -85,5 +86,6 @@ export async function classify(opts: ClassifyOptions): Promise<ClassifyResult> {
     labels,
     confidence: data.confidence,
     reasoning: data.reasoning,
+    usage: result.usage,
   };
 }

@@ -63,6 +63,7 @@ export interface Hooks<T = unknown> {
   }) => void | Promise<void>;
   onSuccess?: (ctx: { result: T; usage?: UsageInfo }) => void | Promise<void>;
   onError?: (ctx: { error: Error; allAttempts: number }) => void | Promise<void>;
+  onChunk?: (ctx: { partial: Partial<T>; model: string }) => void | Promise<void>;
 }
 
 export interface FallbackEntry {
@@ -129,7 +130,10 @@ export interface GenerateOptions<TSchema extends ZodLike> {
 
   temperature?: number;
   maxTokens?: number;
+  topP?: number;
+  seed?: number;
 
+  signal?: AbortSignal;
   trackUsage?: boolean;
   hooks?: Hooks<z.infer<TSchema>>;
 }
@@ -179,6 +183,8 @@ export interface CreateClientOptions {
     maxRetries?: number;
     temperature?: number;
     maxTokens?: number;
+    topP?: number;
+    seed?: number;
     systemPrompt?: string;
     trackUsage?: boolean;
     hooks?: Hooks;

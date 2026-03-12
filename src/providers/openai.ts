@@ -15,7 +15,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   async complete(req: AdapterRequest): Promise<AdapterResponse> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens } = req;
+    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed, signal } = req;
 
     const oaiMessages = messages.map((m) => ({
       role: m.role,
@@ -29,6 +29,8 @@ export class OpenAIAdapter implements ProviderAdapter {
           messages: oaiMessages,
           temperature: temperature ?? 0,
           max_tokens: maxTokens,
+          top_p: topP,
+          seed,
           tools: [
             {
               type: "function",
@@ -40,7 +42,7 @@ export class OpenAIAdapter implements ProviderAdapter {
             },
           ],
           tool_choice: { type: "function", function: { name: schemaName } },
-        });
+        }, { signal });
 
         const toolCall = resp.choices[0]?.message?.tool_calls?.[0];
         if (!toolCall?.function?.arguments) {
@@ -60,8 +62,10 @@ export class OpenAIAdapter implements ProviderAdapter {
           messages: oaiMessages,
           temperature: temperature ?? 0,
           max_tokens: maxTokens,
+          top_p: topP,
+          seed,
           response_format: { type: "json_object" },
-        });
+        }, { signal });
 
         return {
           text: resp.choices[0]?.message?.content ?? "",
@@ -76,7 +80,9 @@ export class OpenAIAdapter implements ProviderAdapter {
         messages: oaiMessages,
         temperature: temperature ?? 0,
         max_tokens: maxTokens,
-      });
+        top_p: topP,
+        seed,
+      }, { signal });
 
       return {
         text: resp.choices[0]?.message?.content ?? "",
@@ -97,7 +103,7 @@ export class OpenAIAdapter implements ProviderAdapter {
   }
 
   async *stream(req: AdapterRequest): AsyncIterable<string> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens } = req;
+    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed, signal } = req;
     const oaiMessages = messages.map((m) => ({ role: m.role, content: m.content }));
 
     try {
@@ -107,6 +113,8 @@ export class OpenAIAdapter implements ProviderAdapter {
           messages: oaiMessages,
           temperature: temperature ?? 0,
           max_tokens: maxTokens,
+          top_p: topP,
+          seed,
           tools: [
             {
               type: "function",
@@ -119,7 +127,7 @@ export class OpenAIAdapter implements ProviderAdapter {
           ],
           tool_choice: { type: "function", function: { name: schemaName } },
           stream: true,
-        });
+        }, { signal });
 
         for await (const chunk of stream) {
           const delta = chunk.choices[0]?.delta?.tool_calls?.[0]?.function?.arguments ?? "";
@@ -133,9 +141,11 @@ export class OpenAIAdapter implements ProviderAdapter {
         messages: oaiMessages,
         temperature: temperature ?? 0,
         max_tokens: maxTokens,
+        top_p: topP,
+        seed,
         ...(mode === "json-mode" ? { response_format: { type: "json_object" } } : {}),
         stream: true,
-      });
+      }, { signal });
 
       for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta?.content ?? "";

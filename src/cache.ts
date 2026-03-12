@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { GenerateOptions, GenerateResult, ZodLike } from "./types.js";
 import { generate } from "./generate.js";
+import { resolveSchema } from "./schema/detect.js";
 
 export interface CacheEntry<T> {
   data: T;
@@ -22,8 +23,8 @@ export interface WithCacheOptions {
   ttl?: number;
   // custom cache store (defaults to in-memory Map)
   store?: CacheStore;
-  // custom key function — receives prompt/messages and model
-  keyFn?: (opts: { prompt?: string; messages?: unknown[]; model: string }) => string;
+  // custom key function — receives prompt/messages, model, and schema JSON
+  keyFn?: (opts: { prompt?: string; messages?: unknown[]; model: string; schemaJson?: string }) => string;
   // if true, log cache hits/misses to console
   debug?: boolean;
 }
@@ -45,9 +46,10 @@ function createMemoryStore(): CacheStore {
   };
 }
 
-function defaultKey(opts: { prompt?: string; messages?: unknown[]; model: string }): string {
+function defaultKey(opts: { prompt?: string; messages?: unknown[]; model: string; schemaJson?: string }): string {
   const input = opts.prompt ?? JSON.stringify(opts.messages ?? []);
-  return `${opts.model}::${input}`;
+  const schemaPart = opts.schemaJson ? `::${opts.schemaJson}` : "";
+  return `${opts.model}::${input}${schemaPart}`;
 }
 
 // withCache wraps generate() with TTL-based memoization.
@@ -64,10 +66,18 @@ export function withCache(cacheOpts: WithCacheOptions = {}) {
   return async function cachedGenerate<TSchema extends ZodLike>(
     opts: GenerateOptions<TSchema>
   ): Promise<CachedGenerateResult<z.infer<TSchema>>> {
+    let schemaJson: string | undefined;
+    try {
+      schemaJson = JSON.stringify(resolveSchema(opts.schema).jsonSchema);
+    } catch {
+      // schema can't be resolved — skip it in the key
+    }
+
     const key = keyFn({
       prompt: opts.prompt,
       messages: opts.messages,
       model: opts.model,
+      schemaJson,
     });
 
     const now = Date.now();

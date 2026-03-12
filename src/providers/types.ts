@@ -8,6 +8,9 @@ export interface AdapterRequest {
   mode: ExtractionMode;
   temperature?: number;
   maxTokens?: number;
+  topP?: number;
+  seed?: number;
+  signal?: AbortSignal;
 }
 
 export interface AdapterResponse {

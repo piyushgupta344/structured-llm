@@ -5,6 +5,7 @@ import { AnthropicAdapter, isAnthropicClient } from "./anthropic.js";
 import { GeminiAdapter, isGeminiClient } from "./gemini.js";
 import { MistralAdapter, isMistralClient } from "./mistral.js";
 import { CohereAdapter, isCohereClient } from "./cohere.js";
+import { BedrockAdapter, isBedrockClient } from "./bedrock.js";
 import { UnsupportedProviderError } from "../errors.js";
 
 // OpenAI-compat provider base URLs
@@ -35,6 +36,7 @@ export function adapterFromClient(client: any): ProviderAdapter {
   if (isGeminiClient(client)) return new GeminiAdapter(client);
   if (isMistralClient(client)) return new MistralAdapter(client);
   if (isCohereClient(client)) return new CohereAdapter(client);
+  if (isBedrockClient(client)) return new BedrockAdapter(client);
 
   if (isOpenAIClient(client)) {
     const compatName = detectCompatProvider(client);
@@ -125,6 +127,23 @@ export async function adapterFromProvider(
     case "cohere": {
       const { CohereClient } = await import("cohere-ai");
       return new CohereAdapter(new CohereClient({ token: key }));
+    }
+    case "bedrock": {
+      let BedrockRuntimeClient: new (opts: unknown) => unknown;
+      try {
+        ({ BedrockRuntimeClient } = await import("@aws-sdk/client-bedrock-runtime") as { BedrockRuntimeClient: new (opts: unknown) => unknown });
+      } catch {
+        throw new Error("@aws-sdk/client-bedrock-runtime is required for the bedrock provider. Install it: npm install @aws-sdk/client-bedrock-runtime");
+      }
+      const region = baseURL ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION ?? "us-east-1";
+      const accessKeyId = key ?? process.env.AWS_ACCESS_KEY_ID;
+      const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+      const sessionToken = process.env.AWS_SESSION_TOKEN;
+      const credentials =
+        accessKeyId && secretAccessKey
+          ? { accessKeyId, secretAccessKey, sessionToken }
+          : undefined;
+      return new BedrockAdapter(new BedrockRuntimeClient({ region, credentials }));
     }
     default:
       throw new UnsupportedProviderError(provider);

@@ -14,6 +14,9 @@ export interface ModelCapabilities {
 // Snapshot of known models + capabilities. PR-welcome to keep this up to date.
 const MODEL_REGISTRY: Record<string, ModelCapabilities> = {
   // OpenAI
+  "gpt-4.1": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 1047576, inputCostPer1M: 2, outputCostPer1M: 8 },
+  "gpt-4.1-mini": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 1047576, inputCostPer1M: 0.4, outputCostPer1M: 1.6 },
+  "gpt-4.1-nano": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 1047576, inputCostPer1M: 0.1, outputCostPer1M: 0.4 },
   "gpt-4o": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 128000, inputCostPer1M: 2.5, outputCostPer1M: 10 },
   "gpt-4o-mini": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 128000, inputCostPer1M: 0.15, outputCostPer1M: 0.6 },
   "gpt-4-turbo": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 128000, inputCostPer1M: 10, outputCostPer1M: 30 },
@@ -21,17 +24,23 @@ const MODEL_REGISTRY: Record<string, ModelCapabilities> = {
   "gpt-3.5-turbo": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 16385, inputCostPer1M: 0.5, outputCostPer1M: 1.5 },
   "o1": { provider: "openai", toolCalling: false, jsonMode: false, streaming: false, contextWindow: 200000, inputCostPer1M: 15, outputCostPer1M: 60 },
   "o1-mini": { provider: "openai", toolCalling: false, jsonMode: false, streaming: false, contextWindow: 128000, inputCostPer1M: 3, outputCostPer1M: 12 },
+  "o3": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 200000, inputCostPer1M: 10, outputCostPer1M: 40 },
   "o3-mini": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 200000, inputCostPer1M: 1.1, outputCostPer1M: 4.4 },
+  "o4-mini": { provider: "openai", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 200000, inputCostPer1M: 1.1, outputCostPer1M: 4.4 },
 
   // Anthropic
   "claude-opus-4-6": { provider: "anthropic", toolCalling: true, jsonMode: false, streaming: true, contextWindow: 200000, inputCostPer1M: 15, outputCostPer1M: 75 },
   "claude-sonnet-4-6": { provider: "anthropic", toolCalling: true, jsonMode: false, streaming: true, contextWindow: 200000, inputCostPer1M: 3, outputCostPer1M: 15 },
   "claude-haiku-4-5": { provider: "anthropic", toolCalling: true, jsonMode: false, streaming: true, contextWindow: 200000, inputCostPer1M: 0.8, outputCostPer1M: 4 },
+  "claude-haiku-4-5-20251001": { provider: "anthropic", toolCalling: true, jsonMode: false, streaming: true, contextWindow: 200000, inputCostPer1M: 0.8, outputCostPer1M: 4 },
+  "claude-3-7-sonnet-20250219": { provider: "anthropic", toolCalling: true, jsonMode: false, streaming: true, contextWindow: 200000, inputCostPer1M: 3, outputCostPer1M: 15 },
   "claude-3-5-sonnet-20241022": { provider: "anthropic", toolCalling: true, jsonMode: false, streaming: true, contextWindow: 200000, inputCostPer1M: 3, outputCostPer1M: 15 },
   "claude-3-5-haiku-20241022": { provider: "anthropic", toolCalling: true, jsonMode: false, streaming: true, contextWindow: 200000, inputCostPer1M: 0.8, outputCostPer1M: 4 },
   "claude-3-opus-20240229": { provider: "anthropic", toolCalling: true, jsonMode: false, streaming: true, contextWindow: 200000, inputCostPer1M: 15, outputCostPer1M: 75 },
 
   // Gemini
+  "gemini-2.5-pro": { provider: "gemini", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 1048576, inputCostPer1M: 1.25, outputCostPer1M: 10 },
+  "gemini-2.5-flash": { provider: "gemini", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 1048576, inputCostPer1M: 0.15, outputCostPer1M: 0.6 },
   "gemini-2.0-flash": { provider: "gemini", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 1048576, inputCostPer1M: 0.1, outputCostPer1M: 0.4 },
   "gemini-2.0-flash-lite": { provider: "gemini", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 1048576, inputCostPer1M: 0.075, outputCostPer1M: 0.3 },
   "gemini-1.5-pro": { provider: "gemini", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 2097152, inputCostPer1M: 1.25, outputCostPer1M: 5 },
@@ -44,6 +53,8 @@ const MODEL_REGISTRY: Record<string, ModelCapabilities> = {
   "codestral-latest": { provider: "mistral", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 256000, inputCostPer1M: 0.3, outputCostPer1M: 0.9 },
 
   // Groq (fast inference)
+  "llama-4-scout-17b-16e-instruct": { provider: "groq", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 131072, inputCostPer1M: 0.11, outputCostPer1M: 0.34 },
+  "llama-4-maverick-17b-128e-instruct": { provider: "groq", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 131072, inputCostPer1M: 0.2, outputCostPer1M: 0.6 },
   "llama-3.3-70b-versatile": { provider: "groq", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 128000, inputCostPer1M: 0.59, outputCostPer1M: 0.79 },
   "llama-3.1-8b-instant": { provider: "groq", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 128000, inputCostPer1M: 0.05, outputCostPer1M: 0.08 },
   "mixtral-8x7b-32768": { provider: "groq", toolCalling: true, jsonMode: true, streaming: true, contextWindow: 32768, inputCostPer1M: 0.24, outputCostPer1M: 0.24 },

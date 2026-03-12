@@ -1,5 +1,6 @@
 import type { SchemaAdapter } from "../types.js";
 import { createZodAdapter, isZodSchema } from "./adapters/zod.js";
+import { isStandardSchema, createStandardSchemaAdapter } from "./adapters/standard-schema.js";
 import { SchemaError } from "../errors.js";
 
 // Custom schema — user brings their own jsonSchema + parse function
@@ -43,11 +44,15 @@ export function resolveSchema<T>(schema: unknown): SchemaAdapter<T> {
     return createZodAdapter(schema) as SchemaAdapter<T>;
   }
 
+  if (isStandardSchema(schema)) {
+    return createStandardSchemaAdapter(schema) as SchemaAdapter<T>;
+  }
+
   if (isCustomSchema(schema)) {
     return createCustomAdapter(schema) as SchemaAdapter<T>;
   }
 
   throw new SchemaError(
-    "Schema must be a Zod schema or a custom schema with { jsonSchema, parse }"
+    "Schema must be a Zod schema, a Standard Schema (Valibot, ArkType, etc.), or a custom schema with { jsonSchema, parse }"
   );
 }

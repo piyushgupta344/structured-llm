@@ -17,6 +17,7 @@ import {
   MissingInputError,
   MaxRetriesError,
   ParseError,
+  ProviderError,
   ValidationError,
 } from "./errors.js";
 import type { ProviderAdapter } from "./providers/types.js";
@@ -39,6 +40,9 @@ export async function generate<TSchema extends ZodLike>(
     retryOptions,
     temperature = 0,
     maxTokens,
+    topP,
+    seed,
+    signal,
     trackUsage = false,
     hooks,
     fallbackChain,
@@ -73,6 +77,9 @@ export async function generate<TSchema extends ZodLike>(
         mode: resolvedMode,
         temperature,
         maxTokens,
+        topP,
+        seed,
+        signal,
         maxRetries,
         retryOptions,
         hooks: hooks as Hooks | undefined,
@@ -106,12 +113,19 @@ interface RunWithRetryOptions {
   mode: ReturnType<typeof resolveMode>;
   temperature: number;
   maxTokens?: number;
+  topP?: number;
+  seed?: number;
+  signal?: AbortSignal;
   maxRetries: number;
   retryOptions?: GenerateOptions<ZodLike>["retryOptions"];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   hooks?: GenerateOptions<ZodLike>["hooks"];
   startTime: number;
   trackUsage: boolean;
+}
+
+function isRetryableStatus(statusCode?: number): boolean {
+  return statusCode === 429 || statusCode === 502 || statusCode === 503 || statusCode === 529;
 }
 
 async function runWithRetry<T>(opts: RunWithRetryOptions): Promise<GenerateResult<T>> {
@@ -123,6 +137,9 @@ async function runWithRetry<T>(opts: RunWithRetryOptions): Promise<GenerateResul
     mode,
     temperature,
     maxTokens,
+    topP,
+    seed,
+    signal,
     maxRetries,
     retryOptions,
     hooks,
@@ -138,15 +155,29 @@ async function runWithRetry<T>(opts: RunWithRetryOptions): Promise<GenerateResul
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     await emitRequest(hooks, currentMessages, model, adapter.name, attempt + 1);
 
-    const resp = await adapter.complete({
-      model,
-      messages: currentMessages,
-      schema: schemaAdapter.jsonSchema,
-      schemaName,
-      mode,
-      temperature,
-      maxTokens,
-    });
+    let resp: Awaited<ReturnType<ProviderAdapter["complete"]>>;
+    try {
+      resp = await adapter.complete({
+        model,
+        messages: currentMessages,
+        schema: schemaAdapter.jsonSchema,
+        schemaName,
+        mode,
+        temperature,
+        maxTokens,
+        topP,
+        seed,
+        signal,
+      });
+    } catch (err) {
+      if (err instanceof ProviderError && isRetryableStatus(err.statusCode) && attempt < maxRetries) {
+        await emitRetry(hooks, attempt + 1, maxRetries, err.message, model);
+        const delay = retryDelay(attempt + 1, retryOptions ?? { strategy: "exponential", baseDelayMs: 1000 });
+        if (delay > 0) await sleep(delay);
+        continue;
+      }
+      throw err;
+    }
 
     lastRaw = resp.text;
     promptTokens += resp.promptTokens ?? 0;
@@ -249,6 +280,10 @@ function buildMessages(
     // If messages already have a system message, don't add another
     const hasSystem = messages.some((m) => m.role === "system");
     if (hasSystem) {
+      // Still append prompt as a user message if provided
+      if (prompt) {
+        return [...messages, { role: "user", content: prompt }];
+      }
       return messages;
     }
     result.push(...messages);
