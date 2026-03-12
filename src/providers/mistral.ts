@@ -12,7 +12,9 @@ export class MistralAdapter implements ProviderAdapter {
   }
 
   async complete(req: AdapterRequest): Promise<AdapterResponse> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed } = req;
+    const { model, messages, schema, schemaName, mode: rawMode, temperature, maxTokens, topP, seed } = req;
+    // Mistral doesn't support OpenAI-style strict JSON schema; fall back to tool-calling
+    const mode = rawMode === "json-schema" ? "tool-calling" : rawMode;
 
     const mistralMessages = messages.map((m) => ({
       role: m.role,
@@ -95,7 +97,8 @@ export class MistralAdapter implements ProviderAdapter {
   }
 
   async *stream(req: AdapterRequest): AsyncIterable<string> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed } = req;
+    const { model, messages, schema, schemaName, mode: rawMode, temperature, maxTokens, topP, seed } = req;
+    const mode = rawMode === "json-schema" ? "tool-calling" : rawMode;
     const mistralMessages = messages.map((m) => ({ role: m.role, content: m.content }));
 
     try {

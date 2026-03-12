@@ -59,8 +59,14 @@ describe("generateMultiSchema", () => {
           create: vi.fn().mockImplementation(async (params: { tool_choice?: unknown; messages: Array<{role: string; content: string}> }) => {
             const prompt = params.messages.find(m => m.role === "user")?.content ?? "";
             order.push(prompt);
+            if (params.tool_choice) {
+              return {
+                choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify({ title: "x", sentiment: "positive" }) } }] } }],
+                usage: { prompt_tokens: 50, completion_tokens: 25, total_tokens: 75 },
+              };
+            }
             return {
-              choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify({ title: "x", sentiment: "positive" }) } }] } }],
+              choices: [{ message: { content: JSON.stringify({ title: "x", sentiment: "positive" }) } }],
               usage: { prompt_tokens: 50, completion_tokens: 25, total_tokens: 75 },
             };
           }),
@@ -86,11 +92,17 @@ describe("generateMultiSchema", () => {
       constructor: { name: "OpenAI" },
       chat: {
         completions: {
-          create: vi.fn().mockImplementation(async () => {
+          create: vi.fn().mockImplementation(async (params: { tool_choice?: unknown }) => {
             callCount++;
             if (callCount === 1) throw new Error("schema error");
+            if (params.tool_choice) {
+              return {
+                choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify({ sentiment: "neutral" }) } }] } }],
+                usage: { prompt_tokens: 50, completion_tokens: 25, total_tokens: 75 },
+              };
+            }
             return {
-              choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify({ sentiment: "neutral" }) } }] } }],
+              choices: [{ message: { content: JSON.stringify({ sentiment: "neutral" }) } }],
               usage: { prompt_tokens: 50, completion_tokens: 25, total_tokens: 75 },
             };
           }),

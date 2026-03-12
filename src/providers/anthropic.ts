@@ -12,7 +12,9 @@ export class AnthropicAdapter implements ProviderAdapter {
   }
 
   async complete(req: AdapterRequest): Promise<AdapterResponse> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, signal } = req;
+    const { model, messages, schema, schemaName, mode: rawMode, temperature, maxTokens, topP, signal } = req;
+    // Anthropic doesn't support OpenAI-style strict JSON schema; fall back to tool-calling
+    const mode = rawMode === "json-schema" ? "tool-calling" : rawMode;
 
     // Anthropic separates system messages from user/assistant turns
     const systemMsg = messages.find((m) => m.role === "system")?.content;
@@ -89,7 +91,8 @@ export class AnthropicAdapter implements ProviderAdapter {
   }
 
   async *stream(req: AdapterRequest): AsyncIterable<string> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, signal } = req;
+    const { model, messages, schema, schemaName, mode: rawMode, temperature, maxTokens, topP, signal } = req;
+    const mode = rawMode === "json-schema" ? "tool-calling" : rawMode;
     const systemMsg = messages.find((m) => m.role === "system")?.content;
     const turns = messages
       .filter((m) => m.role !== "system")

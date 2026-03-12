@@ -412,6 +412,61 @@ describe("generate — complex schemas", () => {
   });
 });
 
+// ── json-schema mode (OpenAI Structured Outputs) ───────────────────────────────
+
+describe("generate — json-schema mode", () => {
+  it("uses response_format json_schema automatically for gpt-4o-mini", async () => {
+    const client = mockOpenAIClient(validSentiment);
+
+    await generate({
+      client,
+      model: "gpt-4o-mini",
+      schema: SentimentSchema,
+      prompt: "Analyze",
+    });
+
+    const callArgs = client.chat.completions.create.mock.calls[0][0];
+    expect(callArgs.response_format?.type).toBe("json_schema");
+    expect(callArgs.response_format?.json_schema?.strict).toBe(true);
+    expect(callArgs.response_format?.json_schema?.schema).toBeDefined();
+    expect(callArgs.tool_choice).toBeUndefined();
+  });
+
+  it("strict schema adds additionalProperties: false to objects", async () => {
+    const client = mockOpenAIClient(validUser);
+
+    await generate({
+      client,
+      model: "gpt-4o",
+      schema: UserSchema,
+      prompt: "Extract",
+    });
+
+    const callArgs = client.chat.completions.create.mock.calls[0][0];
+    const strictSchema = callArgs.response_format?.json_schema?.schema;
+    expect(strictSchema?.additionalProperties).toBe(false);
+    expect(strictSchema?.required).toContain("name");
+    expect(strictSchema?.required).toContain("age");
+    expect(strictSchema?.required).toContain("email");
+  });
+
+  it("can override json-schema mode with explicit mode", async () => {
+    const client = mockOpenAIClient(validSentiment, { toolCall: true });
+
+    await generate({
+      client,
+      model: "gpt-4o-mini",
+      schema: SentimentSchema,
+      prompt: "Analyze",
+      mode: "tool-calling",
+    });
+
+    const callArgs = client.chat.completions.create.mock.calls[0][0];
+    expect(callArgs.tool_choice).toBeDefined();
+    expect(callArgs.response_format).toBeUndefined();
+  });
+});
+
 // ── system prompt ──────────────────────────────────────────────────────────────
 
 describe("generate — systemPrompt", () => {

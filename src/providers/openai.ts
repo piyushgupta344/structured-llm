@@ -1,6 +1,75 @@
 import type { AdapterRequest, AdapterResponse, ProviderAdapter } from "./types.js";
-import type { ProviderName } from "../types.js";
+import type { JSONSchema, ProviderName } from "../types.js";
 import { ProviderError } from "../errors.js";
+
+// ---------------------------------------------------------------------------
+// OpenAI Structured Outputs — strict JSON schema helpers
+// ---------------------------------------------------------------------------
+
+function isNullable(schema: JSONSchema): boolean {
+  if (Array.isArray(schema.type) && schema.type.includes("null")) return true;
+  if (schema.anyOf?.some((s) => s.type === "null")) return true;
+  return false;
+}
+
+/**
+ * Deep-transforms a JSON Schema so it satisfies OpenAI's strict mode rules:
+ *   - every object has `additionalProperties: false`
+ *   - every object property is listed in `required`
+ *   - previously-optional (non-required) properties are wrapped as `{ anyOf: [T, { type: "null" }] }`
+ *     so the model can still omit them by returning null
+ */
+export function makeStrictSchema(schema: JSONSchema): JSONSchema {
+  if (!schema || typeof schema !== "object") return schema;
+
+  // Recurse into $defs first
+  const defs = schema.$defs
+    ? Object.fromEntries(
+        Object.entries(schema.$defs).map(([k, v]) => [k, makeStrictSchema(v)])
+      )
+    : undefined;
+
+  const type = schema.type;
+
+  if (type === "object" || (Array.isArray(type) && type.includes("object")) || schema.properties) {
+    const originalRequired = new Set<string>(schema.required ?? []);
+    const properties = schema.properties ?? {};
+
+    const newProperties: Record<string, JSONSchema> = {};
+    for (const [key, propSchema] of Object.entries(properties)) {
+      const strict = makeStrictSchema(propSchema);
+      if (!originalRequired.has(key) && !isNullable(strict)) {
+        // Wrap optional properties as nullable so the model can return null
+        newProperties[key] = { anyOf: [strict, { type: "null" }] };
+      } else {
+        newProperties[key] = strict;
+      }
+    }
+
+    return {
+      ...schema,
+      ...(defs ? { $defs: defs } : {}),
+      properties: newProperties,
+      required: Object.keys(newProperties),
+      additionalProperties: false,
+    };
+  }
+
+  if (type === "array" || (Array.isArray(type) && type.includes("array"))) {
+    return {
+      ...schema,
+      ...(defs ? { $defs: defs } : {}),
+      items: schema.items ? makeStrictSchema(schema.items) : schema.items,
+    };
+  }
+
+  // Recurse into composition keywords
+  const result: JSONSchema = { ...schema, ...(defs ? { $defs: defs } : {}) };
+  if (schema.anyOf) result.anyOf = schema.anyOf.map(makeStrictSchema);
+  if (schema.oneOf) result.oneOf = schema.oneOf.map(makeStrictSchema);
+  if (schema.allOf) result.allOf = schema.allOf.map(makeStrictSchema);
+  return result;
+}
 
 // Works for OpenAI and any OpenAI-compatible provider (Groq, xAI, Together, etc.)
 export class OpenAIAdapter implements ProviderAdapter {
@@ -23,6 +92,31 @@ export class OpenAIAdapter implements ProviderAdapter {
     }));
 
     try {
+      if (mode === "json-schema") {
+        const resp = await this.client.chat.completions.create({
+          model,
+          messages: oaiMessages,
+          temperature: temperature ?? 0,
+          max_tokens: maxTokens,
+          top_p: topP,
+          seed,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: schemaName,
+              strict: true,
+              schema: makeStrictSchema(schema),
+            },
+          },
+        }, { signal });
+
+        return {
+          text: resp.choices[0]?.message?.content ?? "",
+          promptTokens: resp.usage?.prompt_tokens,
+          completionTokens: resp.usage?.completion_tokens,
+        };
+      }
+
       if (mode === "tool-calling") {
         const resp = await this.client.chat.completions.create({
           model,
@@ -107,6 +201,32 @@ export class OpenAIAdapter implements ProviderAdapter {
     const oaiMessages = messages.map((m) => ({ role: m.role, content: m.content }));
 
     try {
+      if (mode === "json-schema") {
+        const stream = await this.client.chat.completions.create({
+          model,
+          messages: oaiMessages,
+          temperature: temperature ?? 0,
+          max_tokens: maxTokens,
+          top_p: topP,
+          seed,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: schemaName,
+              strict: true,
+              schema: makeStrictSchema(schema),
+            },
+          },
+          stream: true,
+        }, { signal });
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content ?? "";
+          if (delta) yield delta;
+        }
+        return;
+      }
+
       if (mode === "tool-calling") {
         const stream = await this.client.chat.completions.create({
           model,

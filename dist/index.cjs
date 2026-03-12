@@ -1,6 +1,6 @@
 'use strict';
 
-var chunkABYJEX2B_cjs = require('./chunk-ABYJEX2B.cjs');
+var chunkHMRWKCK2_cjs = require('./chunk-HMRWKCK2.cjs');
 var zod = require('zod');
 
 // src/generate-array.ts
@@ -10,7 +10,7 @@ async function generateArray(options) {
     const { z: z3 } = await import('zod');
     wrapperSchema = z3.object({ items: z3.array(options.schema) });
   } catch {
-    throw new chunkABYJEX2B_cjs.SchemaError("zod must be available to use generateArray");
+    throw new chunkHMRWKCK2_cjs.SchemaError("zod must be available to use generateArray");
   }
   const { minItems, maxItems, prompt, systemPrompt, ...rest } = options;
   const arrayHint = [
@@ -22,7 +22,7 @@ async function generateArray(options) {
 Return the results as an array under the "items" key.${arrayHint ? " " + arrayHint : ""}` : void 0;
   const enhancedSystem = systemPrompt ? `${systemPrompt}
 Always return an array of results under the "items" key.` : 'Return an array of results under the "items" key.';
-  const result = await chunkABYJEX2B_cjs.generate({
+  const result = await chunkHMRWKCK2_cjs.generate({
     ...rest,
     schema: wrapperSchema,
     prompt: enhancedPrompt,
@@ -35,27 +35,8 @@ Always return an array of results under the "items" key.` : 'Return an array of 
   };
 }
 
-// src/generate-stream.ts
-function generateStream(options) {
-  const {
-    client,
-    provider,
-    apiKey,
-    baseURL,
-    model,
-    schema,
-    prompt,
-    messages,
-    systemPrompt,
-    mode: modeOverride,
-    temperature = 0,
-    maxTokens,
-    trackUsage = false
-  } = options;
-  if (!prompt && !messages?.length) throw new chunkABYJEX2B_cjs.MissingInputError();
-  const schemaAdapter = chunkABYJEX2B_cjs.resolveSchema(schema);
-  const resolvedMode = chunkABYJEX2B_cjs.resolveMode(model, modeOverride);
-  const builtMessages = buildStreamMessages(prompt, messages, systemPrompt, schemaAdapter.jsonSchema, resolvedMode);
+// src/generate-array-stream.ts
+function generateArrayStream(options) {
   let resolveResult;
   let rejectResult;
   const resultPromise = new Promise((res, rej) => {
@@ -65,70 +46,61 @@ function generateStream(options) {
   const events = [];
   let done = false;
   let waiting = null;
+  function notify() {
+    if (waiting) {
+      waiting();
+      waiting = null;
+    }
+  }
   async function run() {
-    const startTime = Date.now();
-    let accumulated = "";
     try {
-      const providerAdapter = client ? chunkABYJEX2B_cjs.adapterFromClient(client) : await chunkABYJEX2B_cjs.adapterFromProvider(provider, apiKey, baseURL);
-      if (!providerAdapter.stream) {
-        const resp = await providerAdapter.complete({
-          model,
-          messages: builtMessages,
-          schema: schemaAdapter.jsonSchema,
-          schemaName: "extract_structured_data",
-          mode: resolvedMode,
-          temperature,
-          maxTokens
-        });
-        accumulated = resp.text;
-      } else {
-        for await (const chunk of providerAdapter.stream({
-          model,
-          messages: builtMessages,
-          schema: schemaAdapter.jsonSchema,
-          schemaName: "extract_structured_data",
-          mode: resolvedMode,
-          temperature,
-          maxTokens
-        })) {
-          accumulated += chunk;
-          const partial = tryParsePartial(accumulated);
-          if (partial !== null) {
-            events.push({ partial, isDone: false });
-            if (waiting) {
-              waiting();
-              waiting = null;
-            }
-          }
+      let wrapperSchema;
+      try {
+        const { z: z3 } = await import('zod');
+        wrapperSchema = z3.object({ items: z3.array(options.schema) });
+      } catch {
+        throw new chunkHMRWKCK2_cjs.SchemaError("zod must be available to use generateArrayStream");
+      }
+      const { minItems, maxItems, prompt, systemPrompt, ...rest } = options;
+      const arrayHint = [
+        minItems != null ? `Include at least ${minItems} items.` : "",
+        maxItems != null ? `Include at most ${maxItems} items.` : ""
+      ].filter(Boolean).join(" ");
+      const enhancedPrompt = prompt ? `${prompt}
+
+Return the results as an array under the "items" key.${arrayHint ? " " + arrayHint : ""}` : void 0;
+      const enhancedSystem = systemPrompt ? `${systemPrompt}
+Always return an array of results under the "items" key.` : `Return an array of results under the "items" key.`;
+      const stream = chunkHMRWKCK2_cjs.generateStream({
+        ...rest,
+        schema: wrapperSchema,
+        prompt: enhancedPrompt,
+        systemPrompt: enhancedSystem
+      });
+      let lastItemCount = 0;
+      for await (const event of stream) {
+        const items = event.partial?.items ?? [];
+        if (event.isDone) {
+          events.push({ items, isDone: true, usage: event.usage });
+          notify();
+          done = true;
+          resolveResult({ data: items, usage: event.usage });
+          return;
+        }
+        if (items.length > lastItemCount) {
+          lastItemCount = items.length;
+          events.push({ items, isDone: false });
+          notify();
         }
       }
-      const cleaned = chunkABYJEX2B_cjs.extractJSON(accumulated);
-      const parsed = JSON.parse(cleaned);
-      const validation = schemaAdapter.safeParse(parsed);
-      if (!validation.success) {
-        throw new chunkABYJEX2B_cjs.ValidationError([validation.error], accumulated, 1);
+      if (!done) {
+        done = true;
+        notify();
+        resolveResult({ data: [] });
       }
-      const usage = trackUsage ? chunkABYJEX2B_cjs.buildUsage(
-        model,
-        providerAdapter.name,
-        chunkABYJEX2B_cjs.estimateTokens(builtMessages.map((m) => m.content).join(" ")),
-        chunkABYJEX2B_cjs.estimateTokens(accumulated),
-        startTime,
-        1
-      ) : void 0;
-      events.push({ partial: validation.data, isDone: true, usage });
-      if (waiting) {
-        waiting();
-        waiting = null;
-      }
-      done = true;
-      resolveResult({ data: validation.data, usage });
     } catch (err) {
       done = true;
-      if (waiting) {
-        waiting();
-        waiting = null;
-      }
+      notify();
       const e = err instanceof Error ? err : new Error(String(err));
       rejectResult(e);
     }
@@ -154,44 +126,6 @@ function generateStream(options) {
   };
   return Object.assign(iterable, { result: resultPromise });
 }
-function tryParsePartial(text) {
-  try {
-    const cleaned = chunkABYJEX2B_cjs.extractJSON(text);
-    return JSON.parse(cleaned);
-  } catch {
-    const partial = {};
-    const kv = /["'](\w+)["']\s*:\s*([^,}\n]+)/g;
-    let m;
-    while ((m = kv.exec(text)) !== null) {
-      try {
-        partial[m[1]] = JSON.parse(m[2].trim());
-      } catch {
-        partial[m[1]] = m[2].trim().replace(/[",]/g, "");
-      }
-    }
-    return Object.keys(partial).length > 0 ? partial : null;
-  }
-}
-function buildStreamMessages(prompt, messages, systemPrompt, jsonSchema, mode) {
-  const result = [];
-  if (mode === "prompt-inject") {
-    const schemaInstructions = `Respond with ONLY valid JSON matching this schema:
-${JSON.stringify(jsonSchema, null, 2)}`;
-    const sys = systemPrompt ? `${systemPrompt}
-
-${schemaInstructions}` : schemaInstructions;
-    result.push({ role: "system", content: sys });
-  } else if (systemPrompt) {
-    result.push({ role: "system", content: systemPrompt });
-  }
-  if (messages?.length) {
-    const hasSystem = messages.some((m) => m.role === "system");
-    if (hasSystem) return messages;
-    result.push(...messages);
-  }
-  if (prompt) result.push({ role: "user", content: prompt });
-  return result;
-}
 
 // src/generate-batch.ts
 async function generateBatch(options) {
@@ -213,7 +147,7 @@ async function generateBatch(options) {
         const globalIdx = i + chunkIdx;
         const start = Date.now();
         try {
-          const result = await chunkABYJEX2B_cjs.generate({
+          const result = await chunkHMRWKCK2_cjs.generate({
             ...baseOptions,
             prompt: input.prompt,
             messages: input.messages,
@@ -271,7 +205,7 @@ async function generateMultiSchema(options) {
   async function runOne(label, schema) {
     const start = Date.now();
     try {
-      const result = await chunkABYJEX2B_cjs.generate({
+      const result = await chunkHMRWKCK2_cjs.generate({
         ...baseOpts,
         schema
       });
@@ -334,7 +268,7 @@ async function classify(opts) {
     includeConfidence ? "Include a confidence score from 0 (not confident) to 1 (very confident)." : "",
     includeReasoning ? "Include a brief one-sentence reasoning for your classification." : ""
   ].filter(Boolean).join("\n");
-  const result = await chunkABYJEX2B_cjs.generate({
+  const result = await chunkHMRWKCK2_cjs.generate({
     ...rest,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     schema,
@@ -350,7 +284,8 @@ ${classifySystem}` : classifySystem
     label: labels[0] ?? "",
     labels,
     confidence: data.confidence,
-    reasoning: data.reasoning
+    reasoning: data.reasoning,
+    usage: result.usage
   };
 }
 async function extract(opts) {
@@ -396,7 +331,7 @@ async function extract(opts) {
     const def = typeof spec === "string" ? { type: spec } : spec;
     return `- ${key} (${def.description ?? def.type})`;
   }).join("\n");
-  const result = await chunkABYJEX2B_cjs.generate({
+  const result = await chunkHMRWKCK2_cjs.generate({
     ...rest,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     schema,
@@ -404,7 +339,7 @@ async function extract(opts) {
 ${fieldDescriptions}
 If a field cannot be found, omit it.`
   });
-  return result.data;
+  return { ...result.data, usage: result.usage };
 }
 
 // src/client.ts
@@ -425,13 +360,13 @@ function createClient(clientOptions) {
   }
   return {
     generate(opts) {
-      return chunkABYJEX2B_cjs.generate(mergeOptions(opts));
+      return chunkHMRWKCK2_cjs.generate(mergeOptions(opts));
     },
     generateArray(opts) {
       return generateArray(mergeOptions(opts));
     },
     generateStream(opts) {
-      return generateStream(mergeOptions(opts));
+      return chunkHMRWKCK2_cjs.generateStream(mergeOptions(opts));
     },
     generateBatch(opts) {
       return generateBatch({ ...mergeOptions({ model: opts.model ?? defaultModel ?? "" }), ...opts });
@@ -503,7 +438,7 @@ function createTemplate(config) {
     render,
     async run(vars, overrides = {}) {
       const prompt = render(vars);
-      return chunkABYJEX2B_cjs.generate({ ...generateConfig, ...overrides, prompt });
+      return chunkHMRWKCK2_cjs.generate({ ...generateConfig, ...overrides, prompt });
     },
     async runArray(vars, overrides = {}) {
       const prompt = render(vars);
@@ -533,15 +468,22 @@ function createMemoryStore() {
 }
 function defaultKey(opts) {
   const input = opts.prompt ?? JSON.stringify(opts.messages ?? []);
-  return `${opts.model}::${input}`;
+  const schemaPart = opts.schemaJson ? `::${opts.schemaJson}` : "";
+  return `${opts.model}::${input}${schemaPart}`;
 }
 function withCache(cacheOpts = {}) {
   const { ttl = 5 * 60 * 1e3, store = createMemoryStore(), keyFn = defaultKey, debug = false } = cacheOpts;
   return async function cachedGenerate(opts) {
+    let schemaJson;
+    try {
+      schemaJson = JSON.stringify(chunkHMRWKCK2_cjs.resolveSchema(opts.schema).jsonSchema);
+    } catch {
+    }
     const key = keyFn({
       prompt: opts.prompt,
       messages: opts.messages,
-      model: opts.model
+      model: opts.model,
+      schemaJson
     });
     const now = Date.now();
     const cached = store.get(key);
@@ -555,7 +497,7 @@ function withCache(cacheOpts = {}) {
       };
     }
     if (debug) console.log(`[cache] MISS ${key.slice(0, 60)}`);
-    const result = await chunkABYJEX2B_cjs.generate(opts);
+    const result = await chunkHMRWKCK2_cjs.generate(opts);
     store.set(key, {
       data: result.data,
       usage: result.usage,
@@ -568,55 +510,63 @@ function withCache(cacheOpts = {}) {
 
 Object.defineProperty(exports, "MaxRetriesError", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.MaxRetriesError; }
+  get: function () { return chunkHMRWKCK2_cjs.MaxRetriesError; }
 });
 Object.defineProperty(exports, "MissingInputError", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.MissingInputError; }
+  get: function () { return chunkHMRWKCK2_cjs.MissingInputError; }
 });
 Object.defineProperty(exports, "ParseError", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.ParseError; }
+  get: function () { return chunkHMRWKCK2_cjs.ParseError; }
 });
 Object.defineProperty(exports, "ProviderError", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.ProviderError; }
+  get: function () { return chunkHMRWKCK2_cjs.ProviderError; }
 });
 Object.defineProperty(exports, "SchemaError", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.SchemaError; }
+  get: function () { return chunkHMRWKCK2_cjs.SchemaError; }
 });
 Object.defineProperty(exports, "StructuredLLMError", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.StructuredLLMError; }
+  get: function () { return chunkHMRWKCK2_cjs.StructuredLLMError; }
 });
 Object.defineProperty(exports, "UnsupportedProviderError", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.UnsupportedProviderError; }
+  get: function () { return chunkHMRWKCK2_cjs.UnsupportedProviderError; }
 });
 Object.defineProperty(exports, "ValidationError", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.ValidationError; }
+  get: function () { return chunkHMRWKCK2_cjs.ValidationError; }
+});
+Object.defineProperty(exports, "fromStandardSchema", {
+  enumerable: true,
+  get: function () { return chunkHMRWKCK2_cjs.fromStandardSchema; }
 });
 Object.defineProperty(exports, "generate", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.generate; }
+  get: function () { return chunkHMRWKCK2_cjs.generate; }
+});
+Object.defineProperty(exports, "generateStream", {
+  enumerable: true,
+  get: function () { return chunkHMRWKCK2_cjs.generateStream; }
 });
 Object.defineProperty(exports, "getModelCapabilities", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.getModelCapabilities; }
+  get: function () { return chunkHMRWKCK2_cjs.getModelCapabilities; }
 });
 Object.defineProperty(exports, "listSupportedModels", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.listSupportedModels; }
+  get: function () { return chunkHMRWKCK2_cjs.listSupportedModels; }
 });
 Object.defineProperty(exports, "resolveMode", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.resolveMode; }
+  get: function () { return chunkHMRWKCK2_cjs.resolveMode; }
 });
 Object.defineProperty(exports, "resolveSchema", {
   enumerable: true,
-  get: function () { return chunkABYJEX2B_cjs.resolveSchema; }
+  get: function () { return chunkHMRWKCK2_cjs.resolveSchema; }
 });
 exports.classify = classify;
 exports.createCacheStore = createMemoryStore;
@@ -624,9 +574,9 @@ exports.createClient = createClient;
 exports.createTemplate = createTemplate;
 exports.extract = extract;
 exports.generateArray = generateArray;
+exports.generateArrayStream = generateArrayStream;
 exports.generateBatch = generateBatch;
 exports.generateMultiSchema = generateMultiSchema;
-exports.generateStream = generateStream;
 exports.withCache = withCache;
 //# sourceMappingURL=index.cjs.map
 //# sourceMappingURL=index.cjs.map

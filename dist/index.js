@@ -1,5 +1,5 @@
-import { SchemaError, generate, MissingInputError, resolveSchema, resolveMode, adapterFromClient, adapterFromProvider, extractJSON, ValidationError, buildUsage, estimateTokens } from './chunk-XI3I6EK3.js';
-export { MaxRetriesError, MissingInputError, ParseError, ProviderError, SchemaError, StructuredLLMError, UnsupportedProviderError, ValidationError, generate, getModelCapabilities, listSupportedModels, resolveMode, resolveSchema } from './chunk-XI3I6EK3.js';
+import { SchemaError, generate, generateStream, resolveSchema } from './chunk-3JZFHT3L.js';
+export { MaxRetriesError, MissingInputError, ParseError, ProviderError, SchemaError, StructuredLLMError, UnsupportedProviderError, ValidationError, fromStandardSchema, generate, generateStream, getModelCapabilities, listSupportedModels, resolveMode, resolveSchema } from './chunk-3JZFHT3L.js';
 import { z } from 'zod';
 
 // src/generate-array.ts
@@ -34,27 +34,8 @@ Always return an array of results under the "items" key.` : 'Return an array of 
   };
 }
 
-// src/generate-stream.ts
-function generateStream(options) {
-  const {
-    client,
-    provider,
-    apiKey,
-    baseURL,
-    model,
-    schema,
-    prompt,
-    messages,
-    systemPrompt,
-    mode: modeOverride,
-    temperature = 0,
-    maxTokens,
-    trackUsage = false
-  } = options;
-  if (!prompt && !messages?.length) throw new MissingInputError();
-  const schemaAdapter = resolveSchema(schema);
-  const resolvedMode = resolveMode(model, modeOverride);
-  const builtMessages = buildStreamMessages(prompt, messages, systemPrompt, schemaAdapter.jsonSchema, resolvedMode);
+// src/generate-array-stream.ts
+function generateArrayStream(options) {
   let resolveResult;
   let rejectResult;
   const resultPromise = new Promise((res, rej) => {
@@ -64,70 +45,61 @@ function generateStream(options) {
   const events = [];
   let done = false;
   let waiting = null;
+  function notify() {
+    if (waiting) {
+      waiting();
+      waiting = null;
+    }
+  }
   async function run() {
-    const startTime = Date.now();
-    let accumulated = "";
     try {
-      const providerAdapter = client ? adapterFromClient(client) : await adapterFromProvider(provider, apiKey, baseURL);
-      if (!providerAdapter.stream) {
-        const resp = await providerAdapter.complete({
-          model,
-          messages: builtMessages,
-          schema: schemaAdapter.jsonSchema,
-          schemaName: "extract_structured_data",
-          mode: resolvedMode,
-          temperature,
-          maxTokens
-        });
-        accumulated = resp.text;
-      } else {
-        for await (const chunk of providerAdapter.stream({
-          model,
-          messages: builtMessages,
-          schema: schemaAdapter.jsonSchema,
-          schemaName: "extract_structured_data",
-          mode: resolvedMode,
-          temperature,
-          maxTokens
-        })) {
-          accumulated += chunk;
-          const partial = tryParsePartial(accumulated);
-          if (partial !== null) {
-            events.push({ partial, isDone: false });
-            if (waiting) {
-              waiting();
-              waiting = null;
-            }
-          }
+      let wrapperSchema;
+      try {
+        const { z: z3 } = await import('zod');
+        wrapperSchema = z3.object({ items: z3.array(options.schema) });
+      } catch {
+        throw new SchemaError("zod must be available to use generateArrayStream");
+      }
+      const { minItems, maxItems, prompt, systemPrompt, ...rest } = options;
+      const arrayHint = [
+        minItems != null ? `Include at least ${minItems} items.` : "",
+        maxItems != null ? `Include at most ${maxItems} items.` : ""
+      ].filter(Boolean).join(" ");
+      const enhancedPrompt = prompt ? `${prompt}
+
+Return the results as an array under the "items" key.${arrayHint ? " " + arrayHint : ""}` : void 0;
+      const enhancedSystem = systemPrompt ? `${systemPrompt}
+Always return an array of results under the "items" key.` : `Return an array of results under the "items" key.`;
+      const stream = generateStream({
+        ...rest,
+        schema: wrapperSchema,
+        prompt: enhancedPrompt,
+        systemPrompt: enhancedSystem
+      });
+      let lastItemCount = 0;
+      for await (const event of stream) {
+        const items = event.partial?.items ?? [];
+        if (event.isDone) {
+          events.push({ items, isDone: true, usage: event.usage });
+          notify();
+          done = true;
+          resolveResult({ data: items, usage: event.usage });
+          return;
+        }
+        if (items.length > lastItemCount) {
+          lastItemCount = items.length;
+          events.push({ items, isDone: false });
+          notify();
         }
       }
-      const cleaned = extractJSON(accumulated);
-      const parsed = JSON.parse(cleaned);
-      const validation = schemaAdapter.safeParse(parsed);
-      if (!validation.success) {
-        throw new ValidationError([validation.error], accumulated, 1);
+      if (!done) {
+        done = true;
+        notify();
+        resolveResult({ data: [] });
       }
-      const usage = trackUsage ? buildUsage(
-        model,
-        providerAdapter.name,
-        estimateTokens(builtMessages.map((m) => m.content).join(" ")),
-        estimateTokens(accumulated),
-        startTime,
-        1
-      ) : void 0;
-      events.push({ partial: validation.data, isDone: true, usage });
-      if (waiting) {
-        waiting();
-        waiting = null;
-      }
-      done = true;
-      resolveResult({ data: validation.data, usage });
     } catch (err) {
       done = true;
-      if (waiting) {
-        waiting();
-        waiting = null;
-      }
+      notify();
       const e = err instanceof Error ? err : new Error(String(err));
       rejectResult(e);
     }
@@ -152,44 +124,6 @@ function generateStream(options) {
     }
   };
   return Object.assign(iterable, { result: resultPromise });
-}
-function tryParsePartial(text) {
-  try {
-    const cleaned = extractJSON(text);
-    return JSON.parse(cleaned);
-  } catch {
-    const partial = {};
-    const kv = /["'](\w+)["']\s*:\s*([^,}\n]+)/g;
-    let m;
-    while ((m = kv.exec(text)) !== null) {
-      try {
-        partial[m[1]] = JSON.parse(m[2].trim());
-      } catch {
-        partial[m[1]] = m[2].trim().replace(/[",]/g, "");
-      }
-    }
-    return Object.keys(partial).length > 0 ? partial : null;
-  }
-}
-function buildStreamMessages(prompt, messages, systemPrompt, jsonSchema, mode) {
-  const result = [];
-  if (mode === "prompt-inject") {
-    const schemaInstructions = `Respond with ONLY valid JSON matching this schema:
-${JSON.stringify(jsonSchema, null, 2)}`;
-    const sys = systemPrompt ? `${systemPrompt}
-
-${schemaInstructions}` : schemaInstructions;
-    result.push({ role: "system", content: sys });
-  } else if (systemPrompt) {
-    result.push({ role: "system", content: systemPrompt });
-  }
-  if (messages?.length) {
-    const hasSystem = messages.some((m) => m.role === "system");
-    if (hasSystem) return messages;
-    result.push(...messages);
-  }
-  if (prompt) result.push({ role: "user", content: prompt });
-  return result;
 }
 
 // src/generate-batch.ts
@@ -349,7 +283,8 @@ ${classifySystem}` : classifySystem
     label: labels[0] ?? "",
     labels,
     confidence: data.confidence,
-    reasoning: data.reasoning
+    reasoning: data.reasoning,
+    usage: result.usage
   };
 }
 async function extract(opts) {
@@ -403,7 +338,7 @@ async function extract(opts) {
 ${fieldDescriptions}
 If a field cannot be found, omit it.`
   });
-  return result.data;
+  return { ...result.data, usage: result.usage };
 }
 
 // src/client.ts
@@ -532,15 +467,22 @@ function createMemoryStore() {
 }
 function defaultKey(opts) {
   const input = opts.prompt ?? JSON.stringify(opts.messages ?? []);
-  return `${opts.model}::${input}`;
+  const schemaPart = opts.schemaJson ? `::${opts.schemaJson}` : "";
+  return `${opts.model}::${input}${schemaPart}`;
 }
 function withCache(cacheOpts = {}) {
   const { ttl = 5 * 60 * 1e3, store = createMemoryStore(), keyFn = defaultKey, debug = false } = cacheOpts;
   return async function cachedGenerate(opts) {
+    let schemaJson;
+    try {
+      schemaJson = JSON.stringify(resolveSchema(opts.schema).jsonSchema);
+    } catch {
+    }
     const key = keyFn({
       prompt: opts.prompt,
       messages: opts.messages,
-      model: opts.model
+      model: opts.model,
+      schemaJson
     });
     const now = Date.now();
     const cached = store.get(key);
@@ -565,6 +507,6 @@ function withCache(cacheOpts = {}) {
   };
 }
 
-export { classify, createMemoryStore as createCacheStore, createClient, createTemplate, extract, generateArray, generateBatch, generateMultiSchema, generateStream, withCache };
+export { classify, createMemoryStore as createCacheStore, createClient, createTemplate, extract, generateArray, generateArrayStream, generateBatch, generateMultiSchema, withCache };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

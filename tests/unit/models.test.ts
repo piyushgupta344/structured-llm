@@ -45,6 +45,20 @@ describe("getModelCapabilities", () => {
     expect(caps?.inputCostPer1M).toBe(0);
     expect(caps?.outputCostPer1M).toBe(0);
   });
+
+  it("marks OpenAI strict-schema-compatible models with strictJsonSchema: true", () => {
+    expect(getModelCapabilities("gpt-4.1")?.strictJsonSchema).toBe(true);
+    expect(getModelCapabilities("gpt-4o")?.strictJsonSchema).toBe(true);
+    expect(getModelCapabilities("gpt-4o-mini")?.strictJsonSchema).toBe(true);
+    expect(getModelCapabilities("o3")?.strictJsonSchema).toBe(true);
+    expect(getModelCapabilities("o4-mini")?.strictJsonSchema).toBe(true);
+  });
+
+  it("marks non-strict models with strictJsonSchema: false", () => {
+    expect(getModelCapabilities("gpt-4-turbo")?.strictJsonSchema).toBe(false);
+    expect(getModelCapabilities("claude-sonnet-4-6")?.strictJsonSchema).toBe(false);
+    expect(getModelCapabilities("gemini-2.5-pro")?.strictJsonSchema).toBe(false);
+  });
 });
 
 describe("listSupportedModels", () => {
@@ -67,9 +81,15 @@ describe("listSupportedModels", () => {
 });
 
 describe("resolveMode", () => {
-  it("returns tool-calling for models that support it", () => {
-    expect(resolveMode("gpt-4o-mini")).toBe("tool-calling");
+  it("returns json-schema for OpenAI models that support strict JSON schema", () => {
+    expect(resolveMode("gpt-4o-mini")).toBe("json-schema");
+    expect(resolveMode("gpt-4o")).toBe("json-schema");
+    expect(resolveMode("gpt-4.1")).toBe("json-schema");
+  });
+
+  it("returns tool-calling for models that support it but not strict JSON schema", () => {
     expect(resolveMode("claude-sonnet-4-6")).toBe("tool-calling");
+    expect(resolveMode("gpt-4-turbo")).toBe("tool-calling");
   });
 
   it("returns json-mode when tool-calling not supported but json-mode is", () => {
@@ -79,13 +99,15 @@ describe("resolveMode", () => {
   it("respects explicit mode override", () => {
     expect(resolveMode("gpt-4o-mini", "json-mode")).toBe("json-mode");
     expect(resolveMode("gpt-4o-mini", "prompt-inject")).toBe("prompt-inject");
+    expect(resolveMode("gpt-4o-mini", "tool-calling")).toBe("tool-calling");
   });
 
   it("defaults to tool-calling for unknown models", () => {
     expect(resolveMode("some-unknown-model-123")).toBe("tool-calling");
   });
 
-  it("auto mode resolves to best available", () => {
-    expect(resolveMode("gpt-4o", "auto")).toBe("tool-calling");
+  it("auto mode resolves to json-schema for models that support strict JSON schema", () => {
+    expect(resolveMode("gpt-4o", "auto")).toBe("json-schema");
+    expect(resolveMode("o4-mini", "auto")).toBe("json-schema");
   });
 });

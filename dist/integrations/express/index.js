@@ -1,4 +1,4 @@
-import { generate } from '../../chunk-XI3I6EK3.js';
+import { generate, generateStream } from '../../chunk-3JZFHT3L.js';
 
 // integrations/express/index.ts
 function structuredMiddleware(options) {
@@ -6,7 +6,8 @@ function structuredMiddleware(options) {
   return async (req, res, next) => {
     try {
       const prompt = promptFromBody ? promptFromBody(req.body) : req.body?.prompt;
-      const { data, usage } = await generate({ ...generateOptions, prompt });
+      const messages = !promptFromBody ? req.body?.messages : void 0;
+      const { data, usage } = await generate({ ...generateOptions, prompt, messages });
       req.structured = data;
       req.structuredUsage = usage;
       next();
@@ -19,6 +20,65 @@ function structuredMiddleware(options) {
     }
   };
 }
+function createStructuredHandler(config) {
+  return async (req, res, next) => {
+    const body = req.body;
+    if (!body?.prompt && !body?.messages?.length) {
+      res.status(400).json({ error: 'Request body must include "prompt" or "messages"' });
+      return;
+    }
+    try {
+      const result = await generate({
+        ...config,
+        prompt: body.prompt,
+        messages: body.messages,
+        systemPrompt: body.systemPrompt ?? config.systemPrompt
+      });
+      res.json(result);
+    } catch (err) {
+      if (next) {
+        next(err);
+      } else {
+        res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  };
+}
+function createStreamingHandler(config) {
+  return async (req, res, next) => {
+    const body = req.body;
+    if (!body?.prompt && !body?.messages?.length) {
+      res.status(400).json({ error: 'Request body must include "prompt" or "messages"' });
+      return;
+    }
+    res.setHeader("Content-Type", "application/x-ndjson");
+    res.setHeader("Cache-Control", "no-cache, no-store");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("X-Accel-Buffering", "no");
+    try {
+      const llmStream = generateStream({
+        ...config,
+        prompt: body.prompt,
+        messages: body.messages,
+        systemPrompt: body.systemPrompt ?? config.systemPrompt
+      });
+      for await (const event of llmStream) {
+        res.write(JSON.stringify(event) + "\n");
+      }
+      res.end();
+    } catch (err) {
+      if (!res.headersSent) {
+        if (next) {
+          next(err);
+        } else {
+          res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+        }
+      } else {
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }) + "\n");
+      }
+    }
+  };
+}
 async function extractFromBody(body, options) {
   const { promptFromBody, onError: _ignored, ...generateOptions } = options;
   const prompt = promptFromBody ? promptFromBody(body) : body?.prompt;
@@ -26,6 +86,6 @@ async function extractFromBody(body, options) {
   return data;
 }
 
-export { extractFromBody, structuredMiddleware };
+export { createStreamingHandler, createStructuredHandler, extractFromBody, structuredMiddleware };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

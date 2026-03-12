@@ -19,10 +19,16 @@ describe("generateBatch", () => {
       constructor: { name: "OpenAI" },
       chat: {
         completions: {
-          create: vi.fn().mockImplementation(async () => {
+          create: vi.fn().mockImplementation(async (params: { tool_choice?: unknown }) => {
             const resp = responses[callCount++] ?? responses[0];
+            if (params.tool_choice) {
+              return {
+                choices: [{ message: { tool_calls: [{ function: { arguments: resp } }] } }],
+                usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },
+              };
+            }
             return {
-              choices: [{ message: { tool_calls: [{ function: { arguments: resp } }] } }],
+              choices: [{ message: { content: resp } }],
               usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },
             };
           }),
@@ -57,11 +63,17 @@ describe("generateBatch", () => {
       constructor: { name: "OpenAI" },
       chat: {
         completions: {
-          create: vi.fn().mockImplementation(async () => {
+          create: vi.fn().mockImplementation(async (params: { tool_choice?: unknown }) => {
             callCount++;
             if (callCount === 2) throw new Error("API error");
+            if (params.tool_choice) {
+              return {
+                choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify({ sentiment: "positive" }) } }] } }],
+                usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },
+              };
+            }
             return {
-              choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify({ sentiment: "positive" }) } }] } }],
+              choices: [{ message: { content: JSON.stringify({ sentiment: "positive" }) } }],
               usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },
             };
           }),

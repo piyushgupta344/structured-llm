@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { Z as ZodLike, G as GenerateOptions, a as GenerateResult, b as GenerateArrayOptions, c as GenerateArrayResult, d as GenerateStreamOptions, S as StreamEvent, U as UsageInfo, C as CreateClientOptions, P as ProviderName, E as ExtractionMode, e as SchemaAdapter } from './types-BPvyU1tv.js';
-export { F as FallbackEntry, H as Hooks, J as JSONSchema, M as Message, f as MessageRole, R as RetryOptions, g as RetryStrategy, h as StreamChunk, i as StreamFinal } from './types-BPvyU1tv.js';
+import { Z as ZodLike, G as GenerateOptions, a as GenerateResult, b as GenerateArrayOptions, c as GenerateArrayResult, d as GenerateStreamOptions, S as StreamEvent, U as UsageInfo, C as CreateClientOptions, P as ProviderName, E as ExtractionMode, e as SchemaAdapter, J as JSONSchema } from './types-9ulo9m3c.js';
+export { F as FallbackEntry, H as Hooks, M as Message, f as MessageRole, R as RetryOptions, g as RetryStrategy, h as StreamChunk, i as StreamFinal } from './types-9ulo9m3c.js';
 
 declare function generate<TSchema extends ZodLike>(options: GenerateOptions<TSchema>): Promise<GenerateResult<z.infer<TSchema>>>;
 
@@ -9,6 +9,18 @@ declare function generateArray<TSchema extends ZodLike>(options: GenerateArrayOp
 declare function generateStream<TSchema extends ZodLike>(options: GenerateStreamOptions<TSchema>): AsyncIterable<StreamEvent<z.infer<TSchema>>> & {
     result: Promise<{
         data: z.infer<TSchema>;
+        usage?: UsageInfo;
+    }>;
+};
+
+interface ArrayStreamEvent<T> {
+    items: T[];
+    isDone: boolean;
+    usage?: UsageInfo;
+}
+declare function generateArrayStream<TSchema extends ZodLike>(options: GenerateArrayOptions<TSchema>): AsyncIterable<ArrayStreamEvent<z.infer<TSchema>>> & {
+    result: Promise<{
+        data: z.infer<TSchema>[];
         usage?: UsageInfo;
     }>;
 };
@@ -100,6 +112,7 @@ interface ClassifyResult {
     labels: string[];
     confidence?: number;
     reasoning?: string;
+    usage?: UsageInfo;
 }
 declare function classify(opts: ClassifyOptions): Promise<ClassifyResult>;
 
@@ -126,7 +139,9 @@ interface ExtractOptions<F extends ExtractFields> extends Omit<GenerateOptions<Z
     fields: F;
     requireAll?: boolean;
 }
-declare function extract<F extends ExtractFields>(opts: ExtractOptions<F>): Promise<ExtractResult<F>>;
+declare function extract<F extends ExtractFields>(opts: ExtractOptions<F>): Promise<ExtractResult<F> & {
+    usage?: UsageInfo;
+}>;
 
 type BoundOmit = "client" | "provider" | "apiKey" | "baseURL";
 interface StructuredLLMClient {
@@ -176,6 +191,7 @@ interface WithCacheOptions {
         prompt?: string;
         messages?: unknown[];
         model: string;
+        schemaJson?: string;
     }) => string;
     debug?: boolean;
 }
@@ -225,6 +241,7 @@ interface ModelCapabilities {
     provider: ProviderName;
     toolCalling: boolean;
     jsonMode: boolean;
+    strictJsonSchema: boolean;
     streaming: boolean;
     contextWindow: number;
     inputCostPer1M?: number;
@@ -249,4 +266,38 @@ interface CustomSchema<T = unknown> {
 }
 declare function resolveSchema<T>(schema: unknown): SchemaAdapter<T>;
 
-export { type BatchInput, type BatchItemResult, type BatchOptions, type BatchProgress, type BatchResult, type BoundTemplate, type CacheEntry, type CacheStore, type CachedGenerateResult, type ClassifyOption, type ClassifyOptions, type ClassifyResult, CreateClientOptions, type CustomSchema, type ExtractFields, type ExtractOptions, type ExtractResult, ExtractionMode, type FieldDef, type FieldSpec, type FieldType, GenerateArrayOptions, GenerateArrayResult, type GenerateMultiSchemaOptions, GenerateOptions, GenerateResult, GenerateStreamOptions, MaxRetriesError, MissingInputError, type MultiSchemaItemResult, type MultiSchemaResult, type MultiSchemaResults, ParseError, ProviderError, ProviderName, SchemaAdapter, SchemaError, type SchemaMap, StreamEvent, type StructuredLLMClient, StructuredLLMError, type TemplateConfig, type TemplateVars, UnsupportedProviderError, UsageInfo, ValidationError, type WithCacheOptions, ZodLike, classify, createMemoryStore as createCacheStore, createClient, createTemplate, extract, generate, generateArray, generateBatch, generateMultiSchema, generateStream, getModelCapabilities, listSupportedModels, resolveMode, resolveSchema, withCache };
+interface StandardSchemaV1<TInput = unknown, TOutput = TInput> {
+    readonly "~standard": {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (value: unknown) => StandardResult<TOutput> | Promise<StandardResult<TOutput>>;
+        readonly types?: {
+            readonly input: TInput;
+            readonly output: TOutput;
+        };
+    };
+}
+type StandardResult<T> = {
+    readonly value: T;
+    readonly issues?: undefined;
+} | {
+    readonly issues: ReadonlyArray<{
+        readonly message: string;
+        readonly path?: ReadonlyArray<string | number | {
+            readonly key: string | number;
+        }>;
+    }>;
+};
+declare function fromStandardSchema<T>(schema: StandardSchemaV1<unknown, T>): {
+    jsonSchema: JSONSchema;
+    parse: (data: unknown) => T;
+    safeParse: (data: unknown) => {
+        success: false;
+        error: string;
+    } | {
+        success: true;
+        data: T;
+    };
+};
+
+export { type ArrayStreamEvent, type BatchInput, type BatchItemResult, type BatchOptions, type BatchProgress, type BatchResult, type BoundTemplate, type CacheEntry, type CacheStore, type CachedGenerateResult, type ClassifyOption, type ClassifyOptions, type ClassifyResult, CreateClientOptions, type CustomSchema, type ExtractFields, type ExtractOptions, type ExtractResult, ExtractionMode, type FieldDef, type FieldSpec, type FieldType, GenerateArrayOptions, GenerateArrayResult, type GenerateMultiSchemaOptions, GenerateOptions, GenerateResult, GenerateStreamOptions, JSONSchema, MaxRetriesError, MissingInputError, type MultiSchemaItemResult, type MultiSchemaResult, type MultiSchemaResults, ParseError, ProviderError, ProviderName, SchemaAdapter, SchemaError, type SchemaMap, StreamEvent, type StructuredLLMClient, StructuredLLMError, type TemplateConfig, type TemplateVars, UnsupportedProviderError, UsageInfo, ValidationError, type WithCacheOptions, ZodLike, classify, createMemoryStore as createCacheStore, createClient, createTemplate, extract, fromStandardSchema, generate, generateArray, generateArrayStream, generateBatch, generateMultiSchema, generateStream, getModelCapabilities, listSupportedModels, resolveMode, resolveSchema, withCache };

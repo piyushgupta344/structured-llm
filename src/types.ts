@@ -7,7 +7,7 @@ export interface Message {
   content: string;
 }
 
-export type ExtractionMode = "tool-calling" | "json-mode" | "prompt-inject" | "auto";
+export type ExtractionMode = "tool-calling" | "json-mode" | "prompt-inject" | "auto" | "json-schema";
 
 export type ProviderName =
   | "openai"

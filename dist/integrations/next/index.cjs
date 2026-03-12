@@ -1,30 +1,93 @@
 'use strict';
 
-var chunkABYJEX2B_cjs = require('../../chunk-ABYJEX2B.cjs');
+var chunkHMRWKCK2_cjs = require('../../chunk-HMRWKCK2.cjs');
 
 // integrations/next/index.ts
 function withStructured(config) {
   return async function(input) {
-    const { data } = await chunkABYJEX2B_cjs.generate({ ...config, ...input });
+    const { data } = await chunkHMRWKCK2_cjs.generate({ ...config, ...input });
     return data;
   };
 }
-function structuredRoute(config) {
-  return async function(req) {
+function createStructuredRoute(config) {
+  return async function POST(request) {
+    let body;
     try {
-      const body = await req.json();
-      if (!body.prompt) {
-        return Response.json({ error: "prompt is required" }, { status: 400 });
-      }
-      const { data, usage } = await chunkABYJEX2B_cjs.generate({ ...config, prompt: body.prompt });
-      return Response.json({ data, usage });
+      body = await request.json();
+    } catch {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    if (!body?.prompt && !body?.messages?.length) {
+      return Response.json(
+        { error: 'Request body must include "prompt" or "messages"' },
+        { status: 400 }
+      );
+    }
+    try {
+      const result = await chunkHMRWKCK2_cjs.generate({
+        ...config,
+        prompt: body.prompt,
+        messages: body.messages,
+        systemPrompt: body.systemPrompt ?? config.systemPrompt,
+        signal: request.signal
+      });
+      return Response.json(result);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Internal error";
-      return Response.json({ error: message }, { status: 500 });
+      const message = err instanceof Error ? err.message : String(err);
+      const status = err.statusCode;
+      return Response.json({ error: message }, { status: status && status >= 400 ? status : 500 });
     }
   };
 }
+var structuredRoute = createStructuredRoute;
+function createStreamingRoute(config) {
+  return async function POST(request) {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    if (!body?.prompt && !body?.messages?.length) {
+      return Response.json(
+        { error: 'Request body must include "prompt" or "messages"' },
+        { status: 400 }
+      );
+    }
+    const llmStream = chunkHMRWKCK2_cjs.generateStream({
+      ...config,
+      prompt: body.prompt,
+      messages: body.messages,
+      systemPrompt: body.systemPrompt ?? config.systemPrompt,
+      signal: request.signal
+    });
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const event of llmStream) {
+            controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+          }
+          controller.close();
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          controller.enqueue(encoder.encode(JSON.stringify({ error: message }) + "\n"));
+          controller.close();
+        }
+      }
+    });
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Cache-Control": "no-cache, no-store",
+        "X-Accel-Buffering": "no"
+      }
+    });
+  };
+}
 
+exports.createStreamingRoute = createStreamingRoute;
+exports.createStructuredRoute = createStructuredRoute;
 exports.structuredRoute = structuredRoute;
 exports.withStructured = withStructured;
 //# sourceMappingURL=index.cjs.map

@@ -12,7 +12,9 @@ export class GeminiAdapter implements ProviderAdapter {
   }
 
   async complete(req: AdapterRequest): Promise<AdapterResponse> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed, signal } = req;
+    const { model, messages, schema, schemaName, mode: rawMode, temperature, maxTokens, topP, seed, signal } = req;
+    // Gemini doesn't support OpenAI-style strict JSON schema; fall back to tool-calling
+    const mode = rawMode === "json-schema" ? "tool-calling" : rawMode;
 
     if (signal?.aborted) throw new ProviderError("gemini", "Request aborted");
 
@@ -118,7 +120,8 @@ export class GeminiAdapter implements ProviderAdapter {
   }
 
   async *stream(req: AdapterRequest): AsyncIterable<string> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, seed, signal } = req;
+    const { model, messages, schema, schemaName, mode: rawMode, temperature, maxTokens, topP, seed, signal } = req;
+    const mode = rawMode === "json-schema" ? "tool-calling" : rawMode;
 
     if (signal?.aborted) throw new ProviderError("gemini", "Request aborted");
 

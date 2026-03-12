@@ -12,7 +12,9 @@ export class BedrockAdapter implements ProviderAdapter {
   }
 
   async complete(req: AdapterRequest): Promise<AdapterResponse> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, signal } = req;
+    const { model, messages, schema, schemaName, mode: rawMode, temperature, maxTokens, topP, signal } = req;
+    // Bedrock doesn't support OpenAI-style strict JSON schema; fall back to tool-calling
+    const mode = rawMode === "json-schema" ? "tool-calling" : rawMode;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let ConverseCommand: any;
@@ -106,7 +108,8 @@ export class BedrockAdapter implements ProviderAdapter {
   }
 
   async *stream(req: AdapterRequest): AsyncIterable<string> {
-    const { model, messages, schema, schemaName, mode, temperature, maxTokens, topP, signal } = req;
+    const { model, messages, schema, schemaName, mode: rawMode, temperature, maxTokens, topP, signal } = req;
+    const mode = rawMode === "json-schema" ? "tool-calling" : rawMode;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let ConverseStreamCommand: any;
