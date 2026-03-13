@@ -28,7 +28,7 @@ const APISpecSchema = z.object({
         .object({
           contentType: z.string(),
           fields: z.array(
-            z.object({ name: z.string(); type: z.string(); required: z.boolean(); description: z.string().optional() })
+            z.object({ name: z.string(), type: z.string(), required: z.boolean(), description: z.string().optional() })
           ),
         })
         .optional(),

@@ -245,13 +245,7 @@ Before opening a PR, make sure:
 
 ## Versioning
 
-We use [changesets](https://github.com/changesets/changesets). When your PR is ready:
-
-```bash
-pnpm changeset
-```
-
-Pick the appropriate bump type (patch/minor/major) and write a brief description of the change. Commit the generated changeset file along with your changes.
+This project uses [semantic versioning](https://semver.org/). Version bumps are handled by the maintainers. You do not need to bump the version in your PR — just describe what changed in your PR description and the maintainers will assign the appropriate version when releasing.
 
 ---
 

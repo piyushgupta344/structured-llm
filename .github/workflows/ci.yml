@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   test:
@@ -38,6 +38,16 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Pack smoke test
+        run: |
+          pnpm pack --pack-destination /tmp
+          node -e "
+            const fs = require('fs');
+            const files = fs.readdirSync('/tmp').filter(f => f.startsWith('structured-llm'));
+            if (files.length === 0) { console.error('pack produced no tarball'); process.exit(1); }
+            console.log('Pack OK:', files[0]);
+          "
 
   coverage:
     name: Coverage

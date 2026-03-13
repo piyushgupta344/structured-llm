@@ -14,7 +14,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "structured-llm": "/Users/piyushgupta/Documents/GitHub/personal_projects/structured-llm/src/index.ts",
+      "structured-llm": new URL("./src/index.ts", import.meta.url).pathname,
     },
   },
 });

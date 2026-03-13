@@ -6,7 +6,8 @@ export async function runHook<K extends keyof Hooks>(
   ctx: Parameters<NonNullable<Hooks[K]>>[0]
 ) {
   if (!hooks) return;
-  const fn = hooks[event] as ((ctx: typeof ctx) => void | Promise<void>) | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fn = hooks[event] as ((ctx: any) => void | Promise<void>) | undefined;
   if (fn) await fn(ctx);
 }
 

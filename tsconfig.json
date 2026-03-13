@@ -3,7 +3,7 @@
     "target": "ES2020",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2020", "DOM"],
+    "lib": ["ES2022", "DOM"],
     "strict": true,
     "exactOptionalPropertyTypes": false,
     "skipLibCheck": true,
@@ -20,6 +20,6 @@
     "noUnusedParameters": false,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*", "integrations/**/*", "tests/**/*", "examples/**/*"],
+  "include": ["src/**/*", "integrations/**/*"],
   "exclude": ["node_modules", "dist"]
 }

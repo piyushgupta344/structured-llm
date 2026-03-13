@@ -36,7 +36,7 @@ const ActionSchema = z.object({
       impact: z.enum(["low", "medium", "high"]),
     })
   ),
-  tools: z.array(z.object({ name: z.string(); category: z.string(); purpose: z.string() })),
+  tools: z.array(z.object({ name: z.string(), category: z.string(), purpose: z.string() })),
   topRecommendation: z.string(),
 });
 
