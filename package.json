@@ -1,6 +1,6 @@
 {
   "name": "structured-llm",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Provider-agnostic TypeScript library for Zod-validated, fully-typed structured output from any LLM",
   "keywords": [
     "llm",
