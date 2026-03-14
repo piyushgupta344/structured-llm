@@ -83,7 +83,7 @@ async function main() {
   });
   console.log(`  Skills: ${data.skills.slice(0, 5).join(", ")}...`);
   console.log(`  Languages: ${data.languages?.map((l) => `${l.name} (${l.level})`).join(", ")}`);
-  if (usage) console.log(`\nTokens used: ${usage.totalTokens} (~$${usage.estimatedCostUsd.toFixed(5)})`);
+  if (usage) console.log(`\nTokens used: ${usage.totalTokens} (~$${usage.estimatedCostUsd?.toFixed(5) ?? "n/a"})`);
 }
 
 main().catch(console.error);

@@ -91,7 +91,7 @@ async function main() {
   });
 
   if (usage) {
-    console.log(`Tokens: ${usage.totalTokens} (~$${usage.estimatedCostUsd.toFixed(5)})`);
+    console.log(`Tokens: ${usage.totalTokens} (~$${usage.estimatedCostUsd?.toFixed(5) ?? "n/a"})`);
   }
 }
 

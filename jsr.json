@@ -1,0 +1,23 @@
+{
+  "name": "@piyushgupta/structured-llm",
+  "version": "0.3.0",
+  "description": "Provider-agnostic TypeScript library for Zod-validated, fully-typed structured output from any LLM",
+  "exports": {
+    ".": "./src/index.ts",
+    "./next": "./integrations/next/index.ts",
+    "./hono": "./integrations/hono/index.ts",
+    "./express": "./integrations/express/index.ts"
+  },
+  "publish": {
+    "include": [
+      "src/",
+      "integrations/",
+      "README.md",
+      "LICENSE",
+      "jsr.json"
+    ],
+    "exclude": [
+      "src/**/*.test.ts"
+    ]
+  }
+}

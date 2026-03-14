@@ -9,6 +9,7 @@
 
 import OpenAI from "openai";
 import { generate } from "../src/index.js";
+import type { CustomSchema } from "../src/index.js";
 
 // --- Custom validator (no Zod) -----------------------------------------------
 
@@ -22,7 +23,7 @@ interface WeatherData {
   forecast: Array<{ day: string; high: number; low: number; condition: string }>;
 }
 
-const WeatherSchema = {
+const WeatherSchema: CustomSchema<WeatherData> = {
   jsonSchema: {
     type: "object" as const,
     properties: {
@@ -84,13 +85,16 @@ async function getWeather() {
   const cities = ["Tokyo", "New York", "London"];
 
   for (const city of cities) {
-    const { data } = await generate({
+    // Custom schemas are passed with a type assertion — generate() accepts them at runtime
+    // even though the TypeScript generic is constrained to ZodType for Zod-specific inference.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (generate as any)({
       client: openai,
       model: "gpt-4o-mini",
       schema: WeatherSchema,
       prompt: `Generate realistic current weather data and a 3-day forecast for ${city}. Use celsius.`,
       temperature: 0.5,
-    });
+    }) as { data: WeatherData };
 
     console.log(`\n${data.city}: ${data.temperature}°${data.unit === "celsius" ? "C" : "F"}, ${data.condition}`);
     console.log(`  Humidity: ${data.humidity}%  Wind: ${data.windSpeed} km/h`);

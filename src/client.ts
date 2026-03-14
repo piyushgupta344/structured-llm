@@ -23,36 +23,40 @@ import { generateMultiSchema } from "./generate-multi-schema.js";
 import type { GenerateMultiSchemaOptions, MultiSchemaResults, SchemaMap } from "./generate-multi-schema.js";
 
 type BoundOmit = "client" | "provider" | "apiKey" | "baseURL";
+// When model is set at client-creation time it is optional per-call (can be overridden).
+// model must be removed from T first, then re-added as optional, because intersection
+// of `{ model: string } & { model?: string }` resolves to `{ model: string }` (still required).
+type ClientOptions<T> = Omit<T, BoundOmit | "model"> & { model?: string };
 
 export interface StructuredLLMClient {
   generate<TSchema extends ZodLike>(
-    options: Omit<GenerateOptions<TSchema>, BoundOmit>
+    options: ClientOptions<GenerateOptions<TSchema>>
   ): Promise<GenerateResult<z.infer<TSchema>>>;
 
   generateArray<TSchema extends ZodLike>(
-    options: Omit<GenerateArrayOptions<TSchema>, BoundOmit>
+    options: ClientOptions<GenerateArrayOptions<TSchema>>
   ): Promise<GenerateArrayResult<z.infer<TSchema>>>;
 
   generateStream<TSchema extends ZodLike>(
-    options: Omit<GenerateStreamOptions<TSchema>, BoundOmit>
+    options: ClientOptions<GenerateStreamOptions<TSchema>>
   ): AsyncIterable<StreamEvent<z.infer<TSchema>>> & {
     result: Promise<{ data: z.infer<TSchema>; usage?: UsageInfo }>;
   };
 
   generateBatch<TSchema extends ZodLike>(
-    options: Omit<BatchOptions<TSchema>, BoundOmit>
+    options: ClientOptions<BatchOptions<TSchema>>
   ): Promise<BatchResult<z.infer<TSchema>>>;
 
   classify(
-    options: Omit<ClassifyOptions, BoundOmit>
+    options: ClientOptions<ClassifyOptions>
   ): Promise<ClassifyResult>;
 
   extract<F extends ExtractFields>(
-    options: Omit<ExtractOptions<F>, BoundOmit>
+    options: ClientOptions<ExtractOptions<F>>
   ): Promise<ExtractResult<F>>;
 
   generateMultiSchema<M extends SchemaMap>(
-    options: Omit<GenerateMultiSchemaOptions<M>, BoundOmit>
+    options: ClientOptions<GenerateMultiSchemaOptions<M>>
   ): Promise<MultiSchemaResults<M>>;
 }
 
@@ -60,7 +64,7 @@ export function createClient(clientOptions: CreateClientOptions): StructuredLLMC
   const { client, provider, apiKey, baseURL, model: defaultModel, defaultOptions = {} } = clientOptions;
 
   function mergeOptions<T extends ZodLike>(
-    opts: Omit<GenerateOptions<T>, BoundOmit>
+    opts: ClientOptions<GenerateOptions<T>>
   ): GenerateOptions<T> {
     const resolvedModel = (opts as GenerateOptions<T>).model ?? defaultModel ?? "";
     return {
@@ -77,30 +81,30 @@ export function createClient(clientOptions: CreateClientOptions): StructuredLLMC
 
   return {
     generate<TSchema extends ZodLike>(
-      opts: Omit<GenerateOptions<TSchema>, BoundOmit>
+      opts: ClientOptions<GenerateOptions<TSchema>>
     ) {
       return generate(mergeOptions(opts));
     },
 
     generateArray<TSchema extends ZodLike>(
-      opts: Omit<GenerateArrayOptions<TSchema>, BoundOmit>
+      opts: ClientOptions<GenerateArrayOptions<TSchema>>
     ) {
       return generateArray(mergeOptions(opts) as GenerateArrayOptions<TSchema>);
     },
 
     generateStream<TSchema extends ZodLike>(
-      opts: Omit<GenerateStreamOptions<TSchema>, BoundOmit>
+      opts: ClientOptions<GenerateStreamOptions<TSchema>>
     ) {
       return generateStream(mergeOptions(opts));
     },
 
     generateBatch<TSchema extends ZodLike>(
-      opts: Omit<BatchOptions<TSchema>, BoundOmit>
+      opts: ClientOptions<BatchOptions<TSchema>>
     ) {
-      return generateBatch({ ...mergeOptions({ model: opts.model ?? defaultModel ?? "" } as Omit<GenerateOptions<TSchema>, BoundOmit>), ...opts } as BatchOptions<TSchema>);
+      return generateBatch({ ...mergeOptions({ model: opts.model ?? defaultModel ?? "" } as ClientOptions<GenerateOptions<TSchema>>), ...opts } as BatchOptions<TSchema>);
     },
 
-    classify(opts: Omit<ClassifyOptions, BoundOmit>) {
+    classify(opts: ClientOptions<ClassifyOptions>) {
       const resolvedModel = opts.model ?? defaultModel ?? "";
       return classify({
         client,
@@ -113,7 +117,7 @@ export function createClient(clientOptions: CreateClientOptions): StructuredLLMC
       } as ClassifyOptions);
     },
 
-    extract<F extends ExtractFields>(opts: Omit<ExtractOptions<F>, BoundOmit>) {
+    extract<F extends ExtractFields>(opts: ClientOptions<ExtractOptions<F>>) {
       const resolvedModel = opts.model ?? defaultModel ?? "";
       return extract({
         client,
@@ -127,7 +131,7 @@ export function createClient(clientOptions: CreateClientOptions): StructuredLLMC
     },
 
     generateMultiSchema<M extends SchemaMap>(
-      opts: Omit<GenerateMultiSchemaOptions<M>, BoundOmit>
+      opts: ClientOptions<GenerateMultiSchemaOptions<M>>
     ) {
       return generateMultiSchema({
         ...mergeOptions({ model: opts.model ?? defaultModel ?? "" } as Omit<GenerateOptions<ZodLike>, BoundOmit>),

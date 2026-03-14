@@ -71,6 +71,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
+    "typecheck:examples": "tsc --noEmit -p tsconfig.examples.json",
     "clean": "rm -rf dist",
     "docs:dev": "vitepress dev website",
     "docs:build": "vitepress build website",
