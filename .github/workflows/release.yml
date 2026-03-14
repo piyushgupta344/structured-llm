@@ -3,46 +3,75 @@ name: Release
 # Triggers automatically when a commit on master changes package.json version.
 # Workflow: bump version in package.json → commit → push → this creates the
 # git tag, GitHub release, npm publish, and JSR publish automatically.
+# Re-runnable: each step is skipped if its artifact already exists.
 
 on:
   push:
     branches: [master]
     paths:
       - package.json
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 0.3.1) — leave blank to use package.json"
+        required: false
 
 jobs:
   check-version:
-    name: Check if version changed
+    name: Check what needs publishing
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get.outputs.version }}
-      should_release: ${{ steps.check.outputs.should_release }}
+      need_tag: ${{ steps.check.outputs.need_tag }}
+      need_npm: ${{ steps.check.outputs.need_npm }}
+      should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - name: Get version from package.json
+      - name: Get version
         id: get
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Check if tag already exists
+      - name: Check what already exists
         id: check
         run: |
           VERSION="${{ steps.get.outputs.version }}"
+
+          # Check git tag
           if git ls-remote --tags origin "refs/tags/v${VERSION}" | grep -q "v${VERSION}"; then
-            echo "Tag v${VERSION} already exists — skipping release"
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "need_tag=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Tag v${VERSION} does not exist — proceeding with release"
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "need_tag=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Check npm
+          if npm view "structured-llm@${VERSION}" version 2>/dev/null | grep -q "${VERSION}"; then
+            echo "need_npm=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "need_npm=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Run if tag or npm is missing
+          if git ls-remote --tags origin "refs/tags/v${VERSION}" | grep -q "v${VERSION}" && \
+             npm view "structured-llm@${VERSION}" version 2>/dev/null | grep -q "${VERSION}"; then
+            echo "Tag and npm are both up to date — nothing to do"
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
           fi
 
   release:
     name: Tag, release, publish
     runs-on: ubuntu-latest
     needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_run == 'true'
     permissions:
       contents: write   # create tags and releases
       id-token: write   # npm provenance + JSR OIDC
@@ -78,6 +107,7 @@ jobs:
           ls /tmp/structured-llm-*.tgz
 
       - name: Create git tag
+        if: needs.check-version.outputs.need_tag == 'true'
         run: |
           VERSION="${{ needs.check-version.outputs.version }}"
           git config user.name "github-actions[bot]"
@@ -86,12 +116,11 @@ jobs:
           git push origin "v${VERSION}"
 
       - name: Extract changelog entry
+        if: needs.check-version.outputs.need_tag == 'true'
         id: changelog
         run: |
           VERSION="${{ needs.check-version.outputs.version }}"
-          # Extract the section for this version from CHANGELOG.md
           NOTES=$(awk "/^## \[${VERSION}\]/,/^## \[/" CHANGELOG.md | head -n -1 | tail -n +2)
-          # Use a multiline delimiter for GITHUB_OUTPUT
           {
             echo "notes<<CHANGELOG_EOF"
             echo "$NOTES"
@@ -99,6 +128,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
+        if: needs.check-version.outputs.need_tag == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -109,6 +139,7 @@ jobs:
             --verify-tag
 
       - name: Publish to npm
+        if: needs.check-version.outputs.need_npm == 'true'
         run: pnpm publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
