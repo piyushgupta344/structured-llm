@@ -1,6 +1,6 @@
 {
   "name": "@piyushgupta/structured-llm",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Provider-agnostic TypeScript library for Zod-validated, fully-typed structured output from any LLM",
   "exports": {
     ".": "./src/index.ts",

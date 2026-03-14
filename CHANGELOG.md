@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Thi
 
 ---
 
+## [0.3.1] — 2026-03-14
+
+### Added
+
+- Published to [JSR](https://jsr.io/@piyushgupta/structured-llm) — install via `deno add jsr:@piyushgupta/structured-llm` or `npx jsr add @piyushgupta/structured-llm`
+- Automated release workflow now publishes to both npm and JSR on every version bump
+
+---
+
 ## [0.3.0] — 2026-03-13
 
 ### Added
