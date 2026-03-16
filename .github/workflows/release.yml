@@ -24,6 +24,7 @@ jobs:
       version: ${{ steps.get.outputs.version }}
       need_tag: ${{ steps.check.outputs.need_tag }}
       need_npm: ${{ steps.check.outputs.need_npm }}
+      need_jsr: ${{ steps.check.outputs.need_jsr }}
       should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - uses: actions/checkout@v4
@@ -47,21 +48,33 @@ jobs:
           # Check git tag
           if git ls-remote --tags origin "refs/tags/v${VERSION}" | grep -q "v${VERSION}"; then
             echo "need_tag=false" >> "$GITHUB_OUTPUT"
+            TAG_EXISTS=true
           else
             echo "need_tag=true" >> "$GITHUB_OUTPUT"
+            TAG_EXISTS=false
           fi
 
           # Check npm
           if npm view "structured-llm@${VERSION}" version 2>/dev/null | grep -q "${VERSION}"; then
             echo "need_npm=false" >> "$GITHUB_OUTPUT"
+            NPM_EXISTS=true
           else
             echo "need_npm=true" >> "$GITHUB_OUTPUT"
+            NPM_EXISTS=false
           fi
 
-          # Run if tag or npm is missing
-          if git ls-remote --tags origin "refs/tags/v${VERSION}" | grep -q "v${VERSION}" && \
-             npm view "structured-llm@${VERSION}" version 2>/dev/null | grep -q "${VERSION}"; then
-            echo "Tag and npm are both up to date — nothing to do"
+          # Check JSR
+          if curl -sf "https://jsr.io/@piyushgupta/structured-llm/${VERSION}_meta.json" > /dev/null 2>&1; then
+            echo "need_jsr=false" >> "$GITHUB_OUTPUT"
+            JSR_EXISTS=true
+          else
+            echo "need_jsr=true" >> "$GITHUB_OUTPUT"
+            JSR_EXISTS=false
+          fi
+
+          # Run if any artifact is missing
+          if [ "$TAG_EXISTS" = true ] && [ "$NPM_EXISTS" = true ] && [ "$JSR_EXISTS" = true ]; then
+            echo "Tag, npm, and JSR are all up to date — nothing to do"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
           else
             echo "should_run=true" >> "$GITHUB_OUTPUT"
@@ -146,4 +159,5 @@ jobs:
           NPM_CONFIG_PROVENANCE: true
 
       - name: Publish to JSR
+        if: needs.check-version.outputs.need_jsr == 'true'
         run: npx jsr publish --allow-slow-types --allow-dirty
