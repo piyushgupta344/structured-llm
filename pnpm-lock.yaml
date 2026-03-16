@@ -37,7 +37,7 @@ importers:
         version: 7.20.0
       openai:
         specifier: ^6.27.0
-        version: 6.27.0(ws@8.19.0)(zod@4.3.6)
+        version: 6.31.0(ws@8.19.0)(zod@4.3.6)
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.8)(typescript@5.9.3)
@@ -2168,8 +2168,8 @@ packages:
   oniguruma-to-es@3.1.1:
     resolution: {integrity: sha512-bUH8SDvPkH3ho3dvwJwfonjlQ4R80vjyvrU8YpxuROddv55vAEJrTuCuCVUhhsHbtlD9tGGbaNApGQckXhS8iQ==}
 
-  openai@6.27.0:
-    resolution: {integrity: sha512-osTKySlrdYrLYTt0zjhY8yp0JUBmWDCN+Q+QxsV4xMQnnoVFpylgKGgxwN8sSdTNw0G4y+WUXs4eCMWpyDNWZQ==}
+  openai@6.31.0:
+    resolution: {integrity: sha512-iqEn3QY1NnVrDOynUWA2Fjs04gzZ0m7fbwR9xZVFmcN1cqQwslMQM2sjQBNkTVFK/rrSvV78SXiBgU+Pyqz1Aw==}
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
@@ -5376,7 +5376,7 @@ snapshots:
       regex: 6.1.0
       regex-recursion: 6.0.2
 
-  openai@6.27.0(ws@8.19.0)(zod@4.3.6):
+  openai@6.31.0(ws@8.19.0)(zod@4.3.6):
     optionalDependencies:
       ws: 8.19.0
       zod: 4.3.6
