@@ -64,7 +64,7 @@ jobs:
           fi
 
           # Check JSR
-          if curl -sf "https://jsr.io/@piyushgupta/structured-llm/${VERSION}_meta.json" > /dev/null 2>&1; then
+          if curl -sf "https://jsr.io/@piyushgupta344/structured-llm/${VERSION}_meta.json" > /dev/null 2>&1; then
             echo "need_jsr=false" >> "$GITHUB_OUTPUT"
             JSR_EXISTS=true
           else
