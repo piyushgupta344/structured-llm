@@ -157,16 +157,3 @@ export async function extractFromBody<TSchema extends ZodLike>(
   const { data } = await generate({ ...generateOptions, prompt });
   return data;
 }
-
-// Declare module augmentation for Express so req.structured is typed
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace Express {
-    interface Request {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      structured?: any;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      structuredUsage?: any;
-    }
-  }
-}
