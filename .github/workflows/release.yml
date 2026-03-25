@@ -27,7 +27,7 @@ jobs:
       need_jsr: ${{ steps.check.outputs.need_jsr }}
       should_run: ${{ steps.check.outputs.should_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 2
 
@@ -90,7 +90,7 @@ jobs:
       id-token: write   # npm provenance + JSR OIDC
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: pnpm/action-setup@v4
         with:
